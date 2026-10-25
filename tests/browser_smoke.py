@@ -1,122 +1,75 @@
-"""Browser acceptance check. Run against npm run dev; uses installed Playwright."""
+"""Wagon acceptance: Tab palette, repeatable paint/erase tools and free walking."""
 import json
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
-
-OUTPUT = Path('/workspace/shared')
+from browser_helpers import snapshot, click_world, choose_world, world_point
 
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path='/usr/bin/chromium', headless=True, args=['--no-sandbox'])
-    page = browser.new_page(viewport={'width': 1440, 'height': 1000}, device_scale_factor=1)
-    errors = []
-    page.on('pageerror', lambda error: errors.append(str(error)))
+    page = browser.new_page(viewport={'width': 1440, 'height': 1000})
+    errors = []; page.on('pageerror', lambda e: errors.append(str(e)))
     assert page.goto('http://127.0.0.1:4173').status == 200
     page.wait_for_selector('.catalog-card', state='attached')
+    assert page.locator('#walk-mode, #build-mode, .mode-switch').count() == 0
     expect(page.locator('#build-menu')).to_be_hidden()
-    expect(page.locator('#inspector')).to_be_hidden()
-    canvas_box = page.locator('#game').bounding_box()
-    assert canvas_box == {'x': 0, 'y': 0, 'width': 1440, 'height': 1000}, canvas_box
-    page.locator('#build-mode').click()
-    expect(page.locator('#build-menu')).to_be_visible()
-    assert page.locator('#game').bounding_box() == canvas_box
-    page.locator('#close-build-menu').click()
-    expect(page.locator('#build-menu')).to_be_hidden()
-    page.keyboard.press('b')
-    expect(page.locator('#build-menu')).to_be_visible()
+    assert page.locator('#game').bounding_box() == {'x': 0, 'y': 0, 'width': 1440, 'height': 1000}
+    page.keyboard.press('Tab'); expect(page.locator('#build-menu')).to_be_visible()
+    page.keyboard.press('Tab'); expect(page.locator('#build-menu')).to_be_hidden()
+    assert len(snapshot(page)['objects']) == 4
+    # The same brush remains selected after every placement.
+    choose_world(page, 'storage')
+    click_world(page, 28.75, 2.75); click_world(page, 34.75, 2.75)
+    assert len(snapshot(page)['objects']) == 6
+    # Painting can also be performed while holding the pointer down.
+    page.mouse.move(*world_point(page, 28.75, 7.75)); page.mouse.down()
+    page.mouse.move(*world_point(page, 28.75, 10.75), steps=10); page.mouse.up()
+    assert len(snapshot(page)['objects']) == 8
+    before = snapshot(page)['player']
+    page.keyboard.down('d'); page.wait_for_timeout(250); page.keyboard.up('d')
+    assert snapshot(page)['player']['x'] > before['x'], 'Walking must work with a paint brush active'
+    # Overlap, walls and the player are still rejected.
+    click_world(page, 28.75, 2.75); assert len(snapshot(page)['objects']) == 8
+    expect(page.locator('#placement')).to_contain_text('занято')
+    click_world(page, -1, 6); expect(page.locator('#placement')).to_contain_text('границами')
+    player = snapshot(page)['player']; click_world(page, player['x'], player['y'])
+    expect(page.locator('#placement')).to_contain_text('персонаж')
+    # Backspace only arms the eraser; clicking removes one object, and it stays active.
+    page.keyboard.press('Backspace'); assert len(snapshot(page)['objects']) == 8
+    click_world(page, 28.75, 2.75); assert len(snapshot(page)['objects']) == 7
+    click_world(page, 34.75, 2.75); assert len(snapshot(page)['objects']) == 6
+    before = snapshot(page)['player']
+    page.keyboard.down('s'); page.wait_for_timeout(200); page.keyboard.up('s')
+    assert snapshot(page)['player']['y'] > before['y'], 'Walking must work with the eraser active'
     page.keyboard.press('Escape')
-    expect(page.locator('#build-menu')).to_be_hidden()
-
-    def choose_type(kind):
-        page.locator('#build-mode').click()
-        page.locator(f'[data-type="{kind}"]').click()
-        expect(page.locator('#build-menu')).to_be_hidden()
-        expect(page.locator('#inspector')).to_be_visible()
-
-    def click_world(x, y):
-        box = page.locator('#game').bounding_box()
-        vertical = box['width'] < 570
-        scale = max(1, min((box['height'] - 400) / 48, (box['width'] - 80) / 12)) if vertical else min((box['width'] - 110) / 48, (box['height'] - 120) / 12)
-        dx, dy = ((6 - y) * scale, (x - 24) * scale) if vertical else ((x - 24) * scale, (y - 6) * scale)
-        page.mouse.click(box['x'] + box['width'] / 2 + dx, box['y'] + box['height'] / 2 + dy)
-
-    def snapshot():
-        page.locator('#save').click()
-        return json.loads(page.evaluate("localStorage.getItem('trail.stage1.layout.v1')"))
-
-    assert len(snapshot()['objects']) == 4
-    # Real keyboard movement and collision against a frame at x=7, y=1.
-    page.keyboard.down('ArrowUp'); page.wait_for_timeout(350); page.keyboard.up('ArrowUp')
-    page.keyboard.down('ArrowRight'); page.wait_for_timeout(1600); page.keyboard.up('ArrowRight')
-    player = snapshot()['player']
-    assert 5.8 < player['x'] <= 6.001, player
-    assert player['y'] < 4, player
-    # Invalid positions preserve the layout and show the specific reason.
-    choose_type('frame')
-    click_world(10, 3)
-    assert 'занято' in page.locator('#placement').inner_text()
-    assert len(snapshot()['objects']) == 4
-    click_world(-1, 6)
-    assert 'границами' in page.locator('#placement').inner_text()
-    assert len(snapshot()['objects']) == 4
-    # Install a frame at x=25,y=6, select it, rotate, move and cancel.
-    click_world(28.25, 8.25)
-    assert len(snapshot()['objects']) == 5
-    page.keyboard.press('Escape')
-    click_world(28, 8)
-    page.locator('#rotate-object').click()
-    placed = snapshot()['objects'][-1]
-    assert placed['rotation'] == 1 and placed['x'] == 25, placed
-    page.locator('#move-object').click()
-    click_world(38.25, 8.25)
-    moved = snapshot()['objects'][-1]
-    assert moved['id'] == placed['id'] and moved['x'] == 36 and moved['y'] == 5, moved
-    page.locator('#move-object').click()
-    page.mouse.move(400, 200)
-    page.keyboard.press('Escape')
-    assert snapshot()['objects'][-1] == moved
-    # Delete then reload the saved layout without replacing the save.
-    page.locator('#delete-object').click()
-    assert page.locator('#object-count').inner_text() == '04'
-    page.locator('#load').click()
-    assert page.locator('#object-count').inner_text() == '05'
-    # A page reload automatically restores the same layout and player.
-    saved = snapshot()
-    page.reload(); page.wait_for_selector('.catalog-card', state='attached')
-    assert snapshot() == saved
-    # Player itself also blocks placement.
-    choose_type('storage')
-    player = saved['player']
-    click_world(player['x'], player['y'])
-    assert 'персонаж' in page.locator('#placement').inner_text()
-    page.keyboard.press('Escape')
-    # Import rejects corrupt geometry atomically.
+    # Move and rotate an existing object without creating a walking/build mode.
+    click_world(page, 28.75, 7.75); page.keyboard.press('m')
+    click_world(page, 38.75, 8.75)
+    assert snapshot(page)['objects'][-2]['x'] == 37
+    page.keyboard.press('r'); assert snapshot(page)['objects'][-2]['rotation'] == 1
+    saved = snapshot(page)
+    page.keyboard.press('Backspace'); click_world(page, 38.75, 8.75)
+    assert len(json.loads(page.evaluate("localStorage.getItem('trail.stage1.layout.v1')"))['objects']) == 6
+    page.locator('#load').click(); assert snapshot(page) == saved
+    page.reload(); page.wait_for_selector('.catalog-card', state='attached'); assert snapshot(page) == saved
     bad = json.loads(json.dumps(saved)); bad['objects'][0]['x'] = -5
-    page.locator('#import-file').set_input_files({'name': 'broken.json', 'mimeType': 'application/json', 'buffer': json.dumps(bad).encode()})
-    expect(page.locator('#toast')).to_contain_text('отклонён')
-    assert snapshot() == saved
-    # Exported JSON can be imported back.
-    page.locator('#build-mode').click()
-    with page.expect_download() as download_info:
-        page.locator('#export').click()
-    exported = Path(download_info.value.path()).read_text()
-    assert json.loads(exported) == saved
-    page.locator('#import-file').set_input_files({'name': 'layout.json', 'mimeType': 'application/json', 'buffer': exported.encode()})
-    expect(page.locator('#toast')).to_contain_text('импортирована')
-    assert snapshot() == saved
-    page.locator('#walk-mode').click()
-    expect(page.locator('#toast')).to_be_hidden(timeout=5000)
-    page.screenshot(path=str(OUTPUT / 'trail-desktop.png'), full_page=True)
-    # Narrow layout must fit the screen, with working portrait coordinate mapping.
-    page.set_viewport_size({'width': 390, 'height': 844})
-    page.wait_for_timeout(100)
-    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-    assert page.evaluate('document.documentElement.scrollHeight <= innerHeight')
-    assert page.locator('#game').bounding_box() == {'x': 0, 'y': 0, 'width': 390, 'height': 844}
-    choose_type('storage')
-    click_world(44.75, 9.75)
-    assert page.locator('#object-count').inner_text() == '06'
+    page.locator('#import-file').set_input_files({'name':'bad.json','mimeType':'application/json','buffer':json.dumps(bad).encode()})
+    expect(page.locator('#toast')).to_contain_text('отклонён'); assert snapshot(page) == saved
+    page.keyboard.press('Tab')
+    with page.expect_download() as download_info: page.locator('#export').click()
+    exported = Path(download_info.value.path()).read_text(); assert json.loads(exported) == saved
+    page.locator('#import-file').set_input_files({'name':'layout.json','mimeType':'application/json','buffer':exported.encode()})
+    expect(page.locator('#toast')).to_contain_text('импортирована'); assert snapshot(page) == saved
     page.keyboard.press('Escape')
-    page.screenshot(path=str(OUTPUT / 'trail-mobile.png'), full_page=True)
+    page.screenshot(path='/workspace/shared/trail-wagon-brush.png')
+    phone = browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True).new_page()
+    phone.on('pageerror',lambda e:errors.append(str(e)))
+    phone.goto('http://127.0.0.1:4173'); phone.wait_for_selector('.catalog-card',state='attached')
+    phone.locator('#build-menu-button').tap(); phone.locator('[data-type="storage"]').tap()
+    click_world(phone, 44.75, 9.75); assert len(snapshot(phone)['objects']) == 5
+    phone.locator('#erase-tool').tap(); click_world(phone, 44.75, 9.75)
+    assert len(snapshot(phone)['objects']) == 4
+    expect(phone.locator('#touch-pad')).to_be_visible()
+    assert phone.evaluate('document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight')
     assert not errors, errors
     browser.close()
-    print('PASS: fullscreen canvas, overlay menu without camera resize, button/B/Esc controls, movement, collision, placement, rotation, move/cancel, delete, save/load/reload, JSON import/export, mobile without scroll, no JS errors')
+    print('PASS: no walking/build modes; Tab palette; repeated clicks and drag painting; Backspace click eraser; free movement with both tools; collision/move/rotation/save/load/import/export; touch controls; no JS errors')

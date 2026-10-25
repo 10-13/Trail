@@ -5,7 +5,8 @@ import { numberField, readVoxels } from './ui.js';
 const $ = id => document.getElementById(id);
 const canvas = $('game'), ctx = canvas.getContext('2d');
 const STORAGE_KEY = 'trail.stage1.layout.v1';
-let state = createState(), mode = 'walk', selectedId = null, ghost = null, movingId = null;
+let state = createState(), selectedId = null, ghost = null, movingId = null;
+let erase = false, stroke = null, hoverId = null;
 let buildMenuOpen = false;
 let visibleLayer = 'all';
 let showGrid = true, pointer = null, dirty = false, toastTimer, previousTime = 0;
@@ -15,7 +16,7 @@ const meters = voxels => (voxels * WAGON.voxel).toLocaleString('ru-RU', { maximu
 const objectSize = object => { const size = dimensions(object); return `${meters(size.width)} × ${meters(size.depth)} × ${meters(size.height)} м`; };
 const selected = () => state.objects.find(object => object.id === selectedId);
 const frameFields = {};
-for (const [key, label, value, max] of [['width', 'X, м', 1.5, 12], ['depth', 'Y, м', 1, 3], ['height', 'Z, м', 2, 2.5]]) {
+for (const [key, label, value, max] of [['width', 'Длина, м', 1.5, 12], ['depth', 'Ширина, м', 1, 3], ['height', 'Высота, м', 2, 2.5]]) {
   const field = numberField(label, `new-frame-${key}`, value, 0.25, max);
   $('frame-config').append(field.row); frameFields[key] = field.input;
 }
@@ -47,19 +48,17 @@ function markDirty() {
 function updateUI() {
   $('build-menu').hidden = !buildMenuOpen;
   document.querySelector('.hud').classList.toggle('menu-open', buildMenuOpen);
-  $('build-mode').setAttribute('aria-expanded', buildMenuOpen);
-  $('walk-mode').classList.toggle('active', mode === 'walk');
-  $('build-mode').classList.toggle('active', mode === 'build');
-  $('walk-mode').setAttribute('aria-pressed', mode === 'walk');
-  $('build-mode').setAttribute('aria-pressed', mode === 'build');
-  $('mode-label').textContent = mode === 'walk' ? 'ХОДЬБА' : movingId ? 'ПЕРЕМЕЩЕНИЕ' : 'СТРОИТЕЛЬСТВО';
+  $('build-menu-button').setAttribute('aria-expanded', buildMenuOpen);
+  $('erase-tool').classList.toggle('active', erase);
+  $('erase-tool').setAttribute('aria-pressed', erase);
+  $('tool-label').textContent = erase ? 'УДАЛЕНИЕ' : movingId ? 'ПЕРЕНОС' : ghost ? 'КИСТЬ' : '';
   document.querySelectorAll('.catalog-card').forEach(button => {
     const active = ghost?.type === button.dataset.type && !movingId;
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', active);
   });
   const object = ghost || selected();
-  $('inspector').hidden = !object;
+  $('inspector').hidden = !object || erase;
   $('object-actions').hidden = !selected() || !!ghost;
   $('edit-frame').hidden = selected()?.type !== 'frame' || !!ghost;
   $('build-actions').hidden = !ghost;
@@ -67,45 +66,42 @@ function updateUI() {
   $('selection-icon').style.color = object ? TYPES[object.type].color : '#93d7cf';
   $('selection-label').textContent = ghost ? movingId ? 'ПЕРЕМЕЩЕНИЕ · ЛКМ ДЛЯ УСТАНОВКИ' : 'СТРОИТЕЛЬСТВО · ЛКМ ДЛЯ УСТАНОВКИ' : object ? object.type === 'frame' ? object.mount === 'ceiling' ? 'ПОТОЛОЧНЫЙ КАРКАС' : 'НАПОЛЬНЫЙ КАРКАС' : TYPES[object.type].category.toUpperCase() : 'ПЕРСОНАЖ';
   $('selection-title').textContent = object ? TYPES[object.type].name : 'Осмотрись внутри';
-  $('selection-detail').textContent = object ? `${objectSize(object)} · ${ghost ? 'выбери свободное место на сетке' : `X ${meters(object.x)} м · Y ${meters(object.y)} м · поворот ${object.rotation * 90}°`}` : 'Передвигайся по вагону и выбирай место для строительства.';
+  $('selection-detail').textContent = object ? `${objectSize(object)} · ${ghost ? 'выбери свободное место на сетке' : `вдоль ${meters(object.x)} м · поперёк ${meters(object.y)} м · поворот ${object.rotation * 90}°`}` : 'Передвигайся по вагону и выбирай место для строительства.';
   if (object?.type === 'frame') $('selection-detail').textContent += ` · низ ${meters(object.z)} м${object.mount === 'ceiling' ? object.z >= PLAYER.height ? ' · проход свободен' : ' · проход перекрыт' : ''} · объектов внутри: ${object.children?.length || 0}`;
   $('object-count').textContent = String(state.objects.length).padStart(2, '0');
   const occupied = new Set();
   for (const object of state.objects) { const d = dimensions(object); for (let x = object.x; x < object.x + d.width; x++) for (let y = object.y; y < object.y + d.depth; y++) occupied.add(`${x},${y}`); }
   const area = occupied.size;
   $('occupancy').innerHTML = `${Math.round(area / (WAGON.width * WAGON.depth) * 100)}<small>%</small>`;
-  $('control-hints').innerHTML = ghost
-    ? '<span><kbd>ЛКМ</kbd> установить</span><span><kbd>R</kbd> поворот</span><span><kbd>Esc</kbd> отменить</span><span><kbd>W A S D</kbd> движение</span>'
-    : '<span><kbd>W A S D</kbd> / <kbd>↑ ↓ ← →</kbd> движение</span><span><kbd>B</kbd> строительство</span><span><kbd>ЛКМ</kbd> выбрать объект</span>';
+  $('control-hints').innerHTML = `<span><kbd>W A S D</kbd> движение</span><span><kbd>Tab</kbd> блоки</span><span><kbd>⌫</kbd> удаление</span><span><kbd>Esc</kbd> ${ghost || erase ? 'убрать кисть' : 'снять выбор'}</span>`;
   updatePlacement();
 }
 function updatePlacement() {
-  $('placement').hidden = !ghost;
+  $('placement').hidden = !ghost && !erase;
+  if (erase) { $('placement').classList.add('invalid'); $('placement').textContent = 'Удаление · нажми на объект · Esc отменить'; return; }
   if (!ghost) return;
   const error = placementError(state, ghost, movingId);
   $('placement').classList.toggle('invalid', !!error);
   $('placement').textContent = error ? `× ${error}` : '✓ Можно установить · ЛКМ';
 }
-function setMode(next) {
-  mode = next;
-  buildMenuOpen = next === 'build';
-  ghost = null; movingId = null;
-  updateUI();
-}
 function cancel() {
   if (buildMenuOpen) { closeBuildMenu(); return; }
-  if (ghost) { ghost = null; movingId = null; }
+  if (ghost || erase) { ghost = null; movingId = null; erase = false; hoverId = null; }
   else selectedId = null;
   updateUI();
 }
 function closeBuildMenu() {
   buildMenuOpen = false;
   updateUI();
-  $('build-mode').focus({ preventScroll: true });
+  canvas.focus({ preventScroll: true });
 }
 function toggleBuildMenu() {
   if (buildMenuOpen) closeBuildMenu();
-  else { setMode('build'); $('close-build-menu').focus({ preventScroll: true }); }
+  else { buildMenuOpen = true; stroke = null; updateUI(); $('close-build-menu').focus({ preventScroll: true }); }
+}
+function toggleErase() {
+  erase = !erase; ghost = null; movingId = null; selectedId = null; buildMenuOpen = false; stroke = null;
+  updateUI(); canvas.focus({ preventScroll: true });
 }
 function snapGhost() {
   if (!ghost || !pointer) return;
@@ -122,7 +118,7 @@ function chooseType(type) {
     settings.mount = $('frame-mount').value;
     settings.children = []; settings.nextItemId = 1;
   }
-  mode = 'build'; movingId = null; selectedId = null;
+  erase = false; movingId = null; selectedId = null;
   buildMenuOpen = false;
   ghost = { type, x: 26, y: 5, z: settings.mount === 'ceiling' ? WAGON.height - settings.height : 0, rotation: 0, ...settings };
   snapGhost();
@@ -132,7 +128,7 @@ function chooseType(type) {
 function startMove() {
   const object = selected();
   if (!object) return;
-  mode = 'build'; movingId = object.id; ghost = { ...object };
+  erase = false; movingId = object.id; ghost = { ...object };
   buildMenuOpen = false;
   // The original remains solid until the player confirms the new position.
   updateUI();
@@ -145,12 +141,6 @@ function rotate() {
   if (error) toast(error, true);
   else { markDirty(); updateUI(); }
 }
-function deleteSelected() {
-  if (!selectedId) return;
-  removeObject(state, selectedId);
-  selectedId = null; ghost = null; movingId = null;
-  markDirty(); updateUI(); toast('Объект удалён');
-}
 function save() {
   try {
     localStorage.setItem(STORAGE_KEY, serialize(state));
@@ -161,6 +151,7 @@ function save() {
 function restore(text, message) {
   const restored = deserialize(text); // Validate everything before replacing current state.
   state = restored; selectedId = null; ghost = null; movingId = null; keys.clear();
+  erase = false; stroke = null; hoverId = null;
   dirty = false; $('save-state').textContent = message;
   updateUI();
 }
@@ -171,17 +162,17 @@ function load() {
     restore(text, 'Загружено из браузера'); toast('Компоновка восстановлена');
   } catch (error) { toast(`Не удалось загрузить: ${error.message}`, true); }
 }
-for (const [index, [type, definition]] of Object.entries(Object.entries(TYPES))) {
+for (const [type, definition] of Object.entries(TYPES)) {
   const button = document.createElement('button');
   button.className = 'catalog-card'; button.dataset.type = type;
   button.style.setProperty('--object-color', definition.color);
   button.setAttribute('aria-pressed', 'false');
-  button.innerHTML = `<span class="catalog-art">${definition.icon}</span><span class="catalog-copy"><strong>${definition.short}</strong><small>${type === 'frame' ? 'Размеры и крепление — выше' : 'Свободное сооружение'}</small>${type === 'frame' ? '' : `<em>${objectSize({ type, rotation: 0 })}</em>`}</span><span class="catalog-key">${Number(index) + 3}</span>`;
+  button.innerHTML = `<span class="catalog-art">${definition.icon}</span><span class="catalog-copy"><strong>${definition.short}</strong><small>${type === 'frame' ? 'Размеры и крепление — выше' : 'Свободное сооружение'}</small>${type === 'frame' ? '' : `<em>${objectSize({ type, rotation: 0 })}</em>`}</span>`;
   button.addEventListener('click', () => chooseType(type));
   $('catalog').append(button);
 }
-$('walk-mode').onclick = () => setMode('walk');
-$('build-mode').onclick = toggleBuildMenu;
+$('build-menu-button').onclick = toggleBuildMenu;
+$('erase-tool').onclick = toggleErase;
 $('close-build-menu').onclick = closeBuildMenu;
 $('edit-frame').onclick = editFrame;
 $('layer-toggle').onclick = () => {
@@ -191,7 +182,7 @@ $('layer-toggle').onclick = () => {
 $('move-object').onclick = startMove;
 $('rotate-object').onclick = rotate;
 $('rotate-ghost').onclick = rotate;
-$('delete-object').onclick = deleteSelected;
+$('delete-object').onclick = toggleErase;
 $('cancel-build').onclick = cancel;
 $('save').onclick = save;
 $('save-editor').onclick = save;
@@ -240,35 +231,51 @@ function objectAt(point, cycle = false) {
 }
 canvas.addEventListener('pointermove', event => {
   pointer = screenToWorld(event); snapGhost();
-  canvas.style.cursor = ghost ? 'crosshair' : objectAt(pointer) ? 'pointer' : 'default';
+  hoverId = objectAt(pointer)?.id || null;
+  canvas.style.cursor = ghost || erase ? 'crosshair' : hoverId ? 'pointer' : 'default';
+  if (stroke && (event.buttons & 1)) applyBrush(false);
 });
+function applyBrush(report = true) {
+  const key = ghost ? `${ghost.x},${ghost.y},${ghost.z}` : `${Math.floor(pointer.x)},${Math.floor(pointer.y)}`;
+  if (stroke?.has(key)) return;
+  stroke?.add(key);
+  if (erase) {
+    const object = objectAt(pointer);
+    if (object) { removeObject(state, object.id); if (selectedId === object.id) selectedId = null; markDirty(); updateUI(); }
+    return;
+  }
+  if (!ghost) return;
+  const wasMoving = !!movingId;
+  const error = putObject(state, ghost, movingId);
+  if (error) { if (report) toast(error, true); return; }
+  selectedId = wasMoving ? movingId : state.objects.at(-1).id;
+  if (wasMoving) { ghost = null; movingId = null; stroke = null; }
+  markDirty(); updateUI();
+}
 canvas.addEventListener('pointerdown', event => {
   if (event.button !== 0) return;
   event.preventDefault(); canvas.focus({ preventScroll: true });
   pointer = screenToWorld(event); snapGhost();
-  if (ghost) {
-    const wasMoving = !!movingId;
-    const error = putObject(state, ghost, movingId);
-    if (error) { toast(error, true); return; }
-    selectedId = wasMoving ? movingId : state.objects.at(-1).id;
-    if (wasMoving) { ghost = null; movingId = null; }
-    markDirty(); updateUI();
-    toast(wasMoving ? 'Объект перемещён' : 'Объект установлен · Esc завершить строительство');
+  if (ghost || erase) {
+    stroke = new Set(); canvas.setPointerCapture(event.pointerId); applyBrush();
   } else {
     selectedId = objectAt(pointer, true)?.id || null;
     updateUI();
   }
 });
+for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(name, () => { stroke = null; });
 canvas.addEventListener('contextmenu', event => { event.preventDefault(); cancel(); });
 const movement = { KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1], KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0] };
 window.addEventListener('keydown', event => {
   if (frameEditor.isOpen) { if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') { event.preventDefault(); save(); } return; }
-  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target.isContentEditable) return;
+  if (event.code === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey) { event.preventDefault(); if (!event.repeat) toggleBuildMenu(); return; }
   if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') { event.preventDefault(); save(); return; }
+  if (event.code === 'Escape') { event.preventDefault(); if (!event.repeat) cancel(); return; }
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement || event.target.isContentEditable) return;
   if (event.ctrlKey || event.metaKey || event.altKey) return;
   if (movement[event.code]) { event.preventDefault(); keys.add(event.code); return; }
   if (event.repeat) return;
-  const actions = { Digit1: () => setMode('walk'), Digit2: toggleBuildMenu, KeyB: toggleBuildMenu, Digit3: () => chooseType('frame'), Digit4: () => chooseType('storage'), Digit5: () => chooseType('workbench'), KeyE: editFrame, KeyR: rotate, KeyM: startMove, Escape: cancel, Delete: deleteSelected };
+  const actions = { KeyE: editFrame, KeyR: rotate, KeyM: startMove, Escape: cancel, Backspace: toggleErase, Delete: toggleErase };
   if (actions[event.code]) { event.preventDefault(); actions[event.code](); }
 });
 window.addEventListener('keyup', event => keys.delete(event.code));
@@ -317,6 +324,7 @@ function drawObject(object, isGhost = false) {
   if (object.id === selectedId && !isGhost) {
     ctx.setLineDash([0.24, 0.16]); rect(-0.16, -0.16, d.width + 0.32, d.depth + 0.32, null, '#eee5c0', 0.065); ctx.setLineDash([]);
   }
+  if (erase && object.id === hoverId) rect(0, 0, d.width, d.depth, '#ed6b5d35', '#ed6b5d', 0.1);
   ctx.restore();
 }
 function render() {
