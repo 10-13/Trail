@@ -15,7 +15,7 @@ const SIZE_KEY = { x: 'width', y: 'depth', z: 'height' };
 const meter = value => (value / 4).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 const $ = id => document.getElementById(id);
 
-export function createFrameEditor({ getState, onChange, onClose, onSimulationStep, onSimulationChange, onDemo, demoActive }) {
+export function createFrameEditor({ getState, onChange, onClose, onSimulationStep, onSimulationChange, onDemo, demoActive, getSimulationMetrics }) {
   const screen = $('frame-editor'), wagon = $('viewport'), hud = document.querySelector('.hud');
   let frameId = null, selectedId = null, draft = null, drag = null, brush = null, erase = false, menuOpen = false;
   let pointerView = null, pointerPoint = null, hoverId = null, stroke = null, movingId = null;
@@ -25,7 +25,7 @@ export function createFrameEditor({ getState, onChange, onClose, onSimulationSte
   const selected = () => frame()?.children.find(item => item.id === selectedId);
   const equipmentError = (unused, item, ignoreId = null) => equipmentPlacementError(getState(), frameId, item, ignoreId);
   const message = (text = '', invalid = false) => { $('editor-message').textContent = text; $('editor-message').classList.toggle('error', invalid); };
-  const simulationControls=createSimulationControls($('editor-simulation'),{getState,changed:onSimulationChange,step:onSimulationStep,demo:onDemo,demoActive});
+  const simulationControls=createSimulationControls($('editor-simulation'),{getMetrics:getSimulationMetrics,getState,changed:onSimulationChange,step:onSimulationStep,demo:onDemo,demoActive});
   const productionInspector=createProductionInspector($('item-production'),{getState,getSelection:()=>!brush&&!erase?(selectedPipeId?{pipeId:selectedPipeId}:selected()?{owner:`${frameId}/${selectedId}`,type:selected().type}:null):null,changed,message});
   const portsEditor = createPortsEditor($('item-ports'), {
     getObject: () => !brush && !erase ? selected() : null,

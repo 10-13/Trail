@@ -18,19 +18,23 @@ export function productionObjects(state) {
   return state.objects.flatMap(o => o.type === 'frame' ? o.children.map(object=>({owner:`${o.id}/${object.id}`,object,frameId:o.id})) : [{owner:o.id,object:o,frameId:null}]).filter(({object})=>object.type==='tank'||object.type==='storage'||Object.hasOwn(RECIPES,object.type));
 }
 function emptyContainer(type) { return { input:{}, output:{}, stored:{}, progress:0, enabled:true, capacity:type==='storage'?64:32, cursor:0 }; }
+const synchronized=new WeakMap(),contexts=new WeakMap(),recordCache=new WeakMap();
 export function ensureSimulation(state) {
-  if (!state.simulation) state.simulation={running:false,tick:0,inventory:{crude:64},containers:{},pipes:{}};
-  const sim=state.simulation,objects=productionObjects(state),owners=new Set(objects.map(o=>o.owner)),pipeIds=new Set(allPipes(state).map(p=>p.id));
+  if (!state.simulation) state.simulation={running:false,rate:4,tick:0,inventory:{crude:64},containers:{},pipes:{}};
+  if(state.simulation.rate===undefined)state.simulation.rate=4;
+  const sim=state.simulation,cached=synchronized.get(state);
+  if(cached?.graph===state.graph&&cached.sim===sim)return sim;
+  const objects=productionObjects(state),owners=new Set(objects.map(o=>o.owner)),pipeIds=new Set(allPipes(state).map(p=>p.id));
   for(const {owner,object}of objects) if(!Object.hasOwn(sim.containers,owner))sim.containers[owner]=emptyContainer(object.type);
   for(const owner of Object.keys(sim.containers))if(!owners.has(owner)&&containerCount(sim.containers[owner])===0)delete sim.containers[owner];
   for(const id of Object.keys(sim.pipes))if(!pipeIds.has(id)&&sim.pipes[id].length===0)delete sim.pipes[id];
-  return sim;
+  synchronized.set(state,{graph:state.graph,sim});return sim;
 }
 export function containerCount(c) { return count(c.input)+count(c.output)+count(c.stored); }
 export function canonicalSimulation(state) { return structuredClone(ensureSimulation(state)); }
 const validStock = stock => stock && typeof stock==='object' && !Array.isArray(stock) && Object.entries(stock).every(([r,n])=>Object.hasOwn(RESOURCES,r)&&Number.isSafeInteger(n)&&n>=0&&n<=1_000_000);
 export function simulationError(state, sim) {
-  if(!sim||typeof sim.running!=='boolean'||!Number.isSafeInteger(sim.tick)||sim.tick<0||!validStock(sim.inventory)||!sim.containers||typeof sim.containers!=='object'||Array.isArray(sim.containers)||!sim.pipes||typeof sim.pipes!=='object'||Array.isArray(sim.pipes))return 'Некорректное состояние производства';
+  if(!sim||typeof sim.running!=='boolean'||(sim.rate!==undefined&&![4,10000].includes(sim.rate))||!Number.isSafeInteger(sim.tick)||sim.tick<0||!validStock(sim.inventory)||!sim.containers||typeof sim.containers!=='object'||Array.isArray(sim.containers)||!sim.pipes||typeof sim.pipes!=='object'||Array.isArray(sim.pipes))return 'Некорректное состояние производства';
   const owners=new Map(productionObjects(state).map(o=>[o.owner,o.object.type])),pipes=new Set(allPipes(state).map(p=>p.id));
   for(const [owner,c]of Object.entries(sim.containers)){
     const type=owners.get(owner),recipe=RECIPES[type];
@@ -71,14 +75,18 @@ function inputStock(record,c){return RECIPES[record.object.type]?c.input:c.store
 function accepts(record,c,port,r){const recipe=RECIPES[record.object.type];return c.enabled&&resourceAllowed(port,r)&&(!recipe||!!recipe.input[r]);}
 function inputLimit(record,c){return RECIPES[record.object.type]?8:c.capacity;}
 function transportContext(state){
+  if(contexts.has(state.graph))return contexts.get(state.graph);
   const graph=state.graph, adjacency=new Map(),reverse=new Map(),ports=new Map(graph.ports.map(p=>[p.id,p]));
   for(const [a,b]of graph.edges){if(!adjacency.has(a))adjacency.set(a,[]);adjacency.get(a).push(b);if(!reverse.has(b))reverse.set(b,[]);reverse.get(b).push(a);}
   const distances=new Map();
   function distance(target){if(distances.has(target))return distances.get(target);const d=new Map([[target,0]]),queue=[target];for(let i=0;i<queue.length;i++)for(const id of reverse.get(queue[i])||[])if(!d.has(id)){d.set(id,d.get(queue[i])+1);queue.push(id);}distances.set(target,d);return d;}
-  return {ports,next(id,target){const d=distance(target);return (adjacency.get(id)||[]).find(n=>d.get(n)===d.get(id)-1);}};
+  const context={ports,next(id,target){const d=distance(target);return (adjacency.get(id)||[]).find(n=>d.get(n)===d.get(id)-1);}};contexts.set(graph,context);return context;
+}
+function simulationRecords(state){
+  if(!recordCache.has(state.graph))recordCache.set(state.graph,new Map(productionObjects(state).map(o=>[o.owner,o])));return recordCache.get(state.graph);
 }
 export function simulationTick(state) {
-  const sim=ensureSimulation(state),records=new Map(productionObjects(state).map(o=>[o.owner,o]));
+  const sim=ensureSimulation(state),records=simulationRecords(state);
   // Ingredients stay reserved in the input buffer until an atomic recipe completion.
   for(const [owner,record]of records){const c=sim.containers[owner],recipe=RECIPES[record.object.type];if(!recipe||!c.enabled)continue;
     if(!Object.entries(recipe.input).every(([r,n])=>(c.input[r]||0)>=n)||count(c.output)+count(recipe.output)>8)continue;

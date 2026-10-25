@@ -6,13 +6,15 @@ function stockChips(host,stock){
   for(const [r,n]of Object.entries(stock))if(n){const chip=el('span','resource-chip');chip.title=RESOURCES[r].name;const icon=el('i',`resource-icon ${RESOURCES[r].shape}`);icon.style.background=RESOURCES[r].color;chip.append(icon,el('span','',`${RESOURCES[r].name} ${n}`));host.append(chip);}
   if(!count(stock))host.append(el('span','muted','—'));
 }
-export function createSimulationControls(host,{getState,changed,step,demo,demoActive}){
+export function createSimulationControls(host,{getState,changed,step,demo,demoActive,getMetrics=()=>({tps:0})}){
   const row=el('div','simulation-controls panel'),toggle=el('button'),single=el('button','','Один такт'),clock=el('span','simulation-clock'),inventory=el('details','inventory'),summary=el('summary'),stock=el('div','resource-stock');
-  toggle.type=single.type='button';toggle.dataset.simToggle='';single.dataset.simStep='';toggle.onclick=()=>{const sim=ensureSimulation(getState());sim.running=!sim.running;changed();};single.onclick=step;
-  inventory.append(summary,stock);row.append(toggle,single,clock,inventory);
+  const fast=el('button','','10kGz'),tps=el('span','simulation-clock');fast.type='button';fast.dataset.simFast='';fast.title='Цель: 10 000 тактов в секунду';tps.dataset.simTps='';tps.setAttribute('aria-label','Фактические такты в секунду');
+  fast.onclick=()=>{const sim=ensureSimulation(getState());sim.running=!(sim.running&&sim.rate===10000);sim.rate=10000;changed();};
+  toggle.type=single.type='button';toggle.dataset.simToggle='';single.dataset.simStep='';toggle.onclick=()=>{const sim=ensureSimulation(getState());if(sim.running)sim.running=false;else{sim.rate=4;sim.running=true;}changed();};single.onclick=step;
+  inventory.append(summary,stock);row.append(toggle,fast,single,tps,clock,inventory);
   let sample;if(demo){sample=el('button','','Пример');sample.type='button';sample.dataset.productionDemo='';sample.onclick=demo;row.append(sample);}
   host.append(row);
-  return {refresh(){const sim=ensureSimulation(getState());toggle.textContent=sim.running?'Ⅱ Пауза':'▶ Пуск';toggle.setAttribute('aria-pressed',sim.running);single.disabled=sim.running;clock.textContent=`${(sim.tick/4).toLocaleString('ru-RU')} с`;summary.textContent=`Запас · ${count(sim.inventory)}`;stockChips(stock,sim.inventory);if(sample)sample.textContent=demoActive()?'Вернуть схему':'Пример';}};
+  return {refresh(){const sim=ensureSimulation(getState());toggle.textContent=sim.running?'Ⅱ Пауза':'▶ Пуск';toggle.setAttribute('aria-pressed',sim.running);single.disabled=sim.running;fast.classList.toggle('active',sim.running&&sim.rate===10000);fast.setAttribute('aria-pressed',sim.running&&sim.rate===10000);tps.textContent=`TPS ${sim.running?(getMetrics().tps||0).toLocaleString('ru-RU'):'0'}`;tps.title=`Цель: ${(sim.rate||4).toLocaleString('ru-RU')} TPS`;clock.textContent=`${(sim.tick/4).toLocaleString('ru-RU')} с`;summary.textContent=`Запас · ${count(sim.inventory)}`;stockChips(stock,sim.inventory);if(sample)sample.textContent=demoActive()?'Вернуть схему':'Пример';}};
 }
 export function createProductionInspector(host,{getState,getSelection,changed,message}){
   const box=el('section','production-inspector'),title=el('h3'),recipe=el('p','muted'),status=el('p','production-status'),progress=el('progress'),buffers=el('div','production-buffers');

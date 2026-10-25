@@ -1,4 +1,5 @@
-import { TICK_SECONDS, ensureSimulation, simulationTick, pipeTokens } from './simulation.js';
+import { createSimulationRunner } from './simulation-runner.js';
+import { ensureSimulation, simulationTick, pipeTokens } from './simulation.js';
 import { createSimulationControls, createProductionInspector, drawProductionGlyph } from './production-ui.js';
 import { createProductionDemo } from './production-demo.js';
 import { WAGON, PLAYER, TYPES, EQUIPMENT, dimensions, worldEquipment, createState, placementError, putObject, removeObject, movePlayer, serialize, deserialize, pipePlacementError, putPipe, paintPipeRoute, removePipe, findPipe, updatePipeFaces, updatePorts } from './core.js';
@@ -14,7 +15,7 @@ const STORAGE_KEY = 'trail.stage1.layout.v1';
 let state = createState(), selectedId = null, ghost = null, movingId = null;
 let erase = false, stroke = null, hoverId = null;
 let selectedPipeId = null, pipeAnchor = null, highlightedPipes = new Set();
-let buildMenuOpen = false, simulationAccumulator=0, demoBackup=null;
+let buildMenuOpen = false, lastSimulationUI=0, demoBackup=null;
 try{demoBackup=sessionStorage.getItem('trail.production.backup');}catch{}
 let visibleLayer = 'all';
 let showGrid = true, pointer = null, dirty = false, toastTimer, previousTime = 0;
@@ -37,16 +38,17 @@ function newFrameClearance() {
 frameFields.height.oninput = newFrameClearance;
 $('frame-mount').onchange = () => { if ($('frame-mount').value === 'ceiling') frameFields.height.value = '0.5'; newFrameClearance(); };
 newFrameClearance();
-const frameEditor = createFrameEditor({ onSimulationStep:stepSimulation,onSimulationChange:simulationChanged,onDemo:toggleDemo,demoActive:()=>!!demoBackup,getState: () => state, onChange: () => { markDirty(); updateUI(); }, onClose: () => { keys.clear(); resize(); updateUI(); canvas.focus({ preventScroll: true }); } });
-const simulationControls=createSimulationControls($('world-simulation'),{getState:()=>state,changed:simulationChanged,step:stepSimulation,demo:toggleDemo,demoActive:()=>!!demoBackup});
+const simulationRunner=createSimulationRunner({getState:()=>state,step:simulationTick});
+const frameEditor = createFrameEditor({ getSimulationMetrics:()=>simulationRunner.metrics,onSimulationStep:stepSimulation,onSimulationChange:simulationChanged,onDemo:toggleDemo,demoActive:()=>!!demoBackup,getState: () => state, onChange: () => { markDirty(); updateUI(); }, onClose: () => { keys.clear(); resize(); updateUI(); canvas.focus({ preventScroll: true }); } });
+const simulationControls=createSimulationControls($('world-simulation'),{getMetrics:()=>simulationRunner.metrics,getState:()=>state,changed:simulationChanged,step:stepSimulation,demo:toggleDemo,demoActive:()=>!!demoBackup});
 const productionInspector=createProductionInspector($('world-production'),{getState:()=>state,getSelection:()=>!ghost&&!erase?(selectedPipeId?{pipeId:selectedPipeId}:selected()?{owner:selectedId,type:selected().type}:null):null,changed:()=>{markDirty();updateUI();},message:toast});
 function refreshSimulation(){simulationControls.refresh();productionInspector.refresh();frameEditor.tick();}
-function simulationChanged(){simulationAccumulator=0;markDirty();refreshSimulation();}
-function stepSimulation(){simulationTick(state);markDirty();refreshSimulation();}
+function simulationChanged(){simulationRunner.reset();markDirty();refreshSimulation();}
+function stepSimulation(){simulationRunner.reset();simulationTick(state);markDirty();refreshSimulation();}
 function toggleDemo(){
   if(frameEditor.isOpen)frameEditor.close();
   if(demoBackup){const backup=demoBackup;demoBackup=null;try{sessionStorage.removeItem('trail.production.backup');}catch{}restore(backup,'Твоя схема восстановлена');toast('Твоя схема восстановлена');}
-  else{demoBackup=serialize(state);try{sessionStorage.setItem('trail.production.backup',demoBackup);}catch{}state=createProductionDemo();selectedId=null;selectedPipeId=null;ghost=null;erase=false;buildMenuOpen=false;simulationAccumulator=0;updateUI();frameEditor.open(state.objects[0].id);toast('128 нефти → фильтр → центрифуга → бак. Нажми «Пуск». «Вернуть схему» возвращает твою компоновку.');}
+  else{demoBackup=serialize(state);try{sessionStorage.setItem('trail.production.backup',demoBackup);}catch{}state=createProductionDemo();selectedId=null;selectedPipeId=null;ghost=null;erase=false;buildMenuOpen=false;simulationRunner.reset();updateUI();frameEditor.open(state.objects[0].id);toast('128 нефти → фильтр → центрифуга → бак. Нажми «Пуск». «Вернуть схему» возвращает твою компоновку.');}
   markDirty();refreshSimulation();
 }
 const rotationAxis = createRotationControl($('world-rotation'), rotate);
@@ -197,7 +199,7 @@ function save() {
 }
 function restore(text, message) {
   const restored = deserialize(text); // Validate everything before replacing current state.
-  state = restored; simulationAccumulator=0; selectedId = null; ghost = null; movingId = null; keys.clear();
+  state = restored; simulationRunner.reset(); selectedId = null; ghost = null; movingId = null; keys.clear();
   erase = false; stroke = null; hoverId = null; selectedPipeId = null; pipeAnchor = null;
   dirty = false; $('save-state').textContent = message;
   updateUI();
@@ -340,7 +342,7 @@ window.addEventListener('keydown', event => {
 });
 window.addEventListener('keyup', event => keys.delete(event.code));
 window.addEventListener('blur', () => keys.clear());
-document.addEventListener('visibilitychange', () => { keys.clear(); previousTime = 0; });
+document.addEventListener('visibilitychange', () => { keys.clear(); previousTime = 0; simulationRunner.reset(); });
 for (const button of document.querySelectorAll('[data-direction]')) {
   const key = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' }[button.dataset.direction];
   button.addEventListener('pointerdown', event => { event.preventDefault(); button.setPointerCapture(event.pointerId); keys.add(key); });
@@ -434,9 +436,9 @@ function render() {
 let accumulator = 0;
 function frame(time) {
   if (previousTime) accumulator += Math.min((time - previousTime) / 1000, 0.1);
-  if(previousTime&&ensureSimulation(state).running)simulationAccumulator+=Math.min((time-previousTime)/1000,.25);
-  else if(!ensureSimulation(state).running)simulationAccumulator=0;
-  while(simulationAccumulator>=TICK_SECONDS){simulationTick(state);simulationAccumulator-=TICK_SECONDS;markDirty();refreshSimulation();}
+  const simulated=simulationRunner.advance(time);
+  if(simulated)markDirty();
+  if(time-lastSimulationUI>=250){refreshSimulation();lastSimulationUI=time;}
   previousTime = time;
   let dx = 0, dy = 0;
   if (!frameEditor.isOpen) for (const key of keys) { const vector = movement[key]; if (vector) { dx += vector[0]; dy += vector[1]; } }
