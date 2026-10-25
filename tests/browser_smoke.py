@@ -11,12 +11,31 @@ with sync_playwright() as p:
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
     assert page.goto('http://127.0.0.1:4173').status == 200
-    page.wait_for_selector('.catalog-card')
+    page.wait_for_selector('.catalog-card', state='attached')
+    expect(page.locator('#build-menu')).to_be_hidden()
+    expect(page.locator('#inspector')).to_be_hidden()
+    canvas_box = page.locator('#game').bounding_box()
+    assert canvas_box == {'x': 0, 'y': 0, 'width': 1440, 'height': 1000}, canvas_box
+    page.locator('#build-mode').click()
+    expect(page.locator('#build-menu')).to_be_visible()
+    assert page.locator('#game').bounding_box() == canvas_box
+    page.locator('#close-build-menu').click()
+    expect(page.locator('#build-menu')).to_be_hidden()
+    page.keyboard.press('b')
+    expect(page.locator('#build-menu')).to_be_visible()
+    page.keyboard.press('Escape')
+    expect(page.locator('#build-menu')).to_be_hidden()
+
+    def choose_type(kind):
+        page.locator('#build-mode').click()
+        page.locator(f'[data-type="{kind}"]').click()
+        expect(page.locator('#build-menu')).to_be_hidden()
+        expect(page.locator('#inspector')).to_be_visible()
 
     def click_world(x, y):
         box = page.locator('#game').bounding_box()
         vertical = box['width'] < 570
-        scale = min((box['height'] - 100) / 48, (box['width'] - 80) / 12) if vertical else min((box['width'] - 110) / 48, (box['height'] - 120) / 12)
+        scale = max(1, min((box['height'] - 400) / 48, (box['width'] - 80) / 12)) if vertical else min((box['width'] - 110) / 48, (box['height'] - 120) / 12)
         dx, dy = ((6 - y) * scale, (x - 24) * scale) if vertical else ((x - 24) * scale, (y - 6) * scale)
         page.mouse.click(box['x'] + box['width'] / 2 + dx, box['y'] + box['height'] / 2 + dy)
 
@@ -32,7 +51,7 @@ with sync_playwright() as p:
     assert 5.8 < player['x'] <= 6.001, player
     assert player['y'] < 4, player
     # Invalid positions preserve the layout and show the specific reason.
-    page.locator('[data-type="frame"]').click()
+    choose_type('frame')
     click_world(10, 3)
     assert 'занято' in page.locator('#placement').inner_text()
     assert len(snapshot()['objects']) == 4
@@ -62,10 +81,10 @@ with sync_playwright() as p:
     assert page.locator('#object-count').inner_text() == '05'
     # A page reload automatically restores the same layout and player.
     saved = snapshot()
-    page.reload(); page.wait_for_selector('.catalog-card')
+    page.reload(); page.wait_for_selector('.catalog-card', state='attached')
     assert snapshot() == saved
     # Player itself also blocks placement.
-    page.locator('[data-type="storage"]').click()
+    choose_type('storage')
     player = saved['player']
     click_world(player['x'], player['y'])
     assert 'персонаж' in page.locator('#placement').inner_text()
@@ -76,6 +95,7 @@ with sync_playwright() as p:
     expect(page.locator('#toast')).to_contain_text('отклонён')
     assert snapshot() == saved
     # Exported JSON can be imported back.
+    page.locator('#build-mode').click()
     with page.expect_download() as download_info:
         page.locator('#export').click()
     exported = Path(download_info.value.path()).read_text()
@@ -84,16 +104,19 @@ with sync_playwright() as p:
     expect(page.locator('#toast')).to_contain_text('импортирована')
     assert snapshot() == saved
     page.locator('#walk-mode').click()
+    expect(page.locator('#toast')).to_be_hidden(timeout=5000)
     page.screenshot(path=str(OUTPUT / 'trail-desktop.png'), full_page=True)
     # Narrow layout must fit the screen, with working portrait coordinate mapping.
     page.set_viewport_size({'width': 390, 'height': 844})
     page.wait_for_timeout(100)
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-    page.locator('[data-type="storage"]').click()
+    assert page.evaluate('document.documentElement.scrollHeight <= innerHeight')
+    assert page.locator('#game').bounding_box() == {'x': 0, 'y': 0, 'width': 390, 'height': 844}
+    choose_type('storage')
     click_world(44.75, 9.75)
     assert page.locator('#object-count').inner_text() == '06'
     page.keyboard.press('Escape')
     page.screenshot(path=str(OUTPUT / 'trail-mobile.png'), full_page=True)
     assert not errors, errors
     browser.close()
-    print('PASS: movement, collision, boundary/overlap/player errors, placement, rotation, move/cancel, delete, save/load/reload, JSON import/export, mobile, no JS errors')
+    print('PASS: fullscreen canvas, overlay menu without camera resize, button/B/Esc controls, movement, collision, placement, rotation, move/cancel, delete, save/load/reload, JSON import/export, mobile without scroll, no JS errors')

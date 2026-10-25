@@ -9,67 +9,53 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="./" aria-label="TRAIL — главная"><span class="brand-symbol">╬</span> TRAIL<span class="brand-sub">ПОЕЗД-ЗАВОД</span></a>
-    <span class="prototype">ПРОТОТИП <b>01</b></span>
-    <div class="save-tools">
-      <span id="save-state">Нет сохранения</span>
-      <button id="load" class="quiet">Загрузить</button>
-      <button id="save" class="save-button">↓ <span>Сохранить</span></button>
-    </div>
-  </header>
-  <main>
-    <aside class="sidebar">
-      <div class="eyebrow">МАСТЕРСКАЯ / 01</div>
-      <h1>Всё начинается<br>с одного вагона.</h1>
-      <p class="intro">Обживай пространство.<br>Собирай свою будущую фабрику.</p>
-      <div class="section-label">РЕЖИМ</div>
-      <div class="mode-switch" role="group" aria-label="Режим игры">
-        <button id="walk-mode" class="active" aria-pressed="true">↟ Ходьба <kbd>1</kbd></button>
-        <button id="build-mode" aria-pressed="false">⊞ Строить <kbd>2</kbd></button>
-      </div>
-      <div class="catalog-heading"><span class="section-label">ОБЪЕКТЫ</span><span>03</span></div>
-      <div id="catalog" class="catalog"></div>
-      <div class="sidebar-bottom">
-        <div class="small-led"></div><span>Первый этап</span>
-        <p>Вагон · персонаж · размещение</p>
-        <div class="file-tools"><button id="export" class="text-button">Экспорт JSON ↗</button><button id="import" class="text-button">Импорт JSON ↙</button></div>
-        <input id="import-file" type="file" accept=".json,application/json" hidden>
-      </div>
-    </aside>
-    <section class="workspace" aria-label="Игровое пространство">
-      <div class="workspace-heading">
-        <div><div class="eyebrow">ТВОЯ МОБИЛЬНАЯ БАЗА</div><h2>Грузовой вагон <span>№ 001</span></h2></div>
-        <div class="stationary"><span class="small-led"></span> НА СТОЯНКЕ</div>
-      </div>
-      <div class="workspace-toolbar">
-        <div class="view-label"><span>⊞</span> ВИД СВЕРХУ <span class="divider">/</span><span id="mode-label">ХОДЬБА</span></div>
-        <button id="grid-toggle" class="quiet" aria-pressed="true">Сетка <span>0,25 м</span></button>
-      </div>
-      <div id="viewport" class="viewport">
-        <canvas id="game" tabindex="0" aria-label="Вагон сверху. WASD или стрелки — движение. 2 — строительство; выберите объект в каталоге и нажмите на свободную клетку."></canvas>
-        <div class="viewport-corner">ВАГОН 001 <span>48 × 12 ЯЧЕЕК</span></div>
-        <div class="north-mark">↑<span>НОС</span></div>
-        <div class="scale">1 м <span></span></div>
-        <div id="placement" class="placement" role="status" hidden></div>
-        <div id="touch-pad" class="touch-pad" aria-label="Движение персонажа">
-          <button data-direction="up" aria-label="Вверх">↑</button><button data-direction="left" aria-label="Влево">←</button><button data-direction="down" aria-label="Вниз">↓</button><button data-direction="right" aria-label="Вправо">→</button>
-        </div>
-      </div>
-      <div class="status-row"><span><i class="legend-dot player-dot"></i>Твой персонаж</span><span><i class="legend-dot frame-dot"></i>Каркас</span><span><i class="legend-dot structure-dot"></i>Свободное сооружение</span><span class="height-note">ВЫСОТА ВАГОНА 2,5 М</span></div>
-      <section class="inspector" aria-label="Выбранный объект">
-        <div class="inspector-icon" id="selection-icon">↟</div>
-        <div class="selection-description"><div class="section-label" id="selection-label">ПЕРСОНАЖ</div><h3 id="selection-title">Осмотрись внутри</h3><p id="selection-detail">Передвигайся по вагону и выбирай место для строительства.</p></div>
-        <div id="object-actions" class="object-actions" hidden><button id="move-object">↔ Переместить <kbd>M</kbd></button><button id="rotate-object">↻ Повернуть <kbd>R</kbd></button><button id="delete-object" class="danger">Удалить <kbd>Del</kbd></button></div>
-        <div id="build-actions" class="object-actions" hidden><button id="rotate-ghost">↻ Повернуть <kbd>R</kbd></button><button id="cancel-build">Отменить <kbd>Esc</kbd></button></div>
-      </section>
-      <div class="bottom-panels">
-        <section class="controls-panel"><div class="section-label">УПРАВЛЕНИЕ</div><div id="control-hints"><span><kbd>W A S D</kbd> / <kbd>↑ ↓ ← →</kbd> движение</span><span><kbd>2</kbd> строительство</span><span><kbd>ЛКМ</kbd> выбрать объект</span></div></section>
-        <section class="metrics"><div><span class="section-label">ГАБАРИТЫ</span><strong>12 × 3 <small>м</small></strong></div><div><span class="section-label">ОБЪЕКТЫ</span><strong id="object-count">04</strong></div><div><span class="section-label">ЗАНЯТО</span><strong id="occupancy">0<small>%</small></strong></div></section>
-      </div>
-      <footer><span>TRAIL <span class="footer-line">/</span> ЭКСПЕРИМЕНТАЛЬНАЯ МАСТЕРСКАЯ</span><span>ЭТАП 01 — ВАГОН И СТРОИТЕЛЬСТВО</span></footer>
-    </section>
+  <main id="viewport" class="viewport" aria-label="Игровое пространство">
+    <canvas id="game" tabindex="0" aria-label="Вагон сверху. WASD или стрелки — движение. B или 2 — открыть меню строительства."></canvas>
   </main>
+
+  <div class="hud">
+    <header class="top-hud">
+      <div class="location panel">
+        <div class="brand"><span>╬</span> TRAIL <small>ПРОТОТИП 01</small></div>
+        <div class="location-detail">Вагон 001 <span>12 × 3 м</span><span class="stationary">● На стоянке</span></div>
+        <div class="metrics"><span>Объекты <b id="object-count">04</b></span><span>Занято <b id="occupancy">0%</b></span><span id="mode-label">ХОДЬБА</span></div>
+      </div>
+      <div class="save-tools panel" aria-label="Сохранение и настройки">
+        <span id="save-state">Нет сохранения</span>
+        <button id="grid-toggle" class="quiet" aria-pressed="true">Сетка <span>0,25 м</span></button>
+        <button id="load" class="quiet">Загрузить</button>
+        <button id="save" class="save-button">↓ Сохранить</button>
+      </div>
+    </header>
+
+    <aside id="build-menu" class="build-menu panel" aria-labelledby="build-title" hidden>
+      <div class="menu-heading"><div><div class="section-label">МАСТЕРСКАЯ</div><h1 id="build-title">Строительство</h1></div><button id="close-build-menu" class="icon-button" aria-label="Закрыть меню строительства">×</button></div>
+      <p class="menu-help">Выбери объект, затем укажи место в вагоне.</p>
+      <div id="catalog" class="catalog"></div>
+      <div class="file-tools"><button id="export" class="text-button">Экспорт JSON ↗</button><button id="import" class="text-button">Импорт JSON ↙</button></div>
+      <input id="import-file" type="file" accept=".json,application/json" hidden>
+      <p class="menu-footnote">Сетка 0,25 м · Поворот 90° · Esc закрыть</p>
+    </aside>
+
+    <section id="inspector" class="inspector panel" aria-label="Выбранный объект" hidden>
+      <div class="selection-summary"><div class="inspector-icon" id="selection-icon">↟</div><div class="selection-description"><div class="section-label" id="selection-label">ОБЪЕКТ</div><h2 id="selection-title"></h2><p id="selection-detail"></p></div></div>
+      <div id="object-actions" class="object-actions" hidden><button id="move-object">↔ Переместить <kbd>M</kbd></button><button id="rotate-object">↻ Повернуть <kbd>R</kbd></button><button id="delete-object" class="danger">Удалить <kbd>Del</kbd></button></div>
+      <div id="build-actions" class="object-actions" hidden><button id="rotate-ghost">↻ Повернуть <kbd>R</kbd></button><button id="cancel-build">Отменить <kbd>Esc</kbd></button></div>
+    </section>
+
+    <div id="placement" class="placement" role="status" hidden></div>
+    <div class="scale">1 м <span></span></div>
+    <div class="bottom-hud">
+      <div class="mode-switch panel" role="group" aria-label="Режим игры">
+        <button id="walk-mode" class="active" aria-pressed="true">↟ Ходьба <kbd>1</kbd></button>
+        <button id="build-mode" aria-pressed="false" aria-expanded="false" aria-controls="build-menu">⊞ Строительство <kbd>B</kbd></button>
+      </div>
+      <div id="control-hints" class="control-hints"><span><kbd>W A S D</kbd> движение</span><span><kbd>ЛКМ</kbd> выбрать объект</span></div>
+    </div>
+    <div id="touch-pad" class="touch-pad" aria-label="Движение персонажа">
+      <button data-direction="up" aria-label="Вверх">↑</button><button data-direction="left" aria-label="Влево">←</button><button data-direction="down" aria-label="Вниз">↓</button><button data-direction="right" aria-label="Вправо">→</button>
+    </div>
+  </div>
   <div id="toast" class="toast" role="status" hidden></div>
   <script type="module" src="game.js"></script>
 </body>

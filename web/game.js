@@ -4,6 +4,7 @@ const $ = id => document.getElementById(id);
 const canvas = $('game'), ctx = canvas.getContext('2d');
 const STORAGE_KEY = 'trail.stage1.layout.v1';
 let state = createState(), mode = 'walk', selectedId = null, ghost = null, movingId = null;
+let buildMenuOpen = false;
 let showGrid = true, pointer = null, dirty = false, toastTimer, previousTime = 0;
 let view = { width: 1, height: 1, scale: 1, vertical: false };
 const keys = new Set();
@@ -22,6 +23,9 @@ function markDirty() {
   if (!dirty) { dirty = true; $('save-state').textContent = 'Есть изменения'; }
 }
 function updateUI() {
+  $('build-menu').hidden = !buildMenuOpen;
+  document.querySelector('.hud').classList.toggle('menu-open', buildMenuOpen);
+  $('build-mode').setAttribute('aria-expanded', buildMenuOpen);
   $('walk-mode').classList.toggle('active', mode === 'walk');
   $('build-mode').classList.toggle('active', mode === 'build');
   $('walk-mode').setAttribute('aria-pressed', mode === 'walk');
@@ -33,6 +37,7 @@ function updateUI() {
     button.setAttribute('aria-pressed', active);
   });
   const object = ghost || selected();
+  $('inspector').hidden = !object;
   $('object-actions').hidden = !selected() || !!ghost;
   $('build-actions').hidden = !ghost;
   $('selection-icon').textContent = object ? TYPES[object.type].icon : '↟';
@@ -45,7 +50,7 @@ function updateUI() {
   $('occupancy').innerHTML = `${Math.round(area / (WAGON.width * WAGON.depth) * 100)}<small>%</small>`;
   $('control-hints').innerHTML = ghost
     ? '<span><kbd>ЛКМ</kbd> установить</span><span><kbd>R</kbd> поворот</span><span><kbd>Esc</kbd> отменить</span><span><kbd>W A S D</kbd> движение</span>'
-    : '<span><kbd>W A S D</kbd> / <kbd>↑ ↓ ← →</kbd> движение</span><span><kbd>2</kbd> строительство</span><span><kbd>ЛКМ</kbd> выбрать объект</span>';
+    : '<span><kbd>W A S D</kbd> / <kbd>↑ ↓ ← →</kbd> движение</span><span><kbd>B</kbd> строительство</span><span><kbd>ЛКМ</kbd> выбрать объект</span>';
   updatePlacement();
 }
 function updatePlacement() {
@@ -57,13 +62,24 @@ function updatePlacement() {
 }
 function setMode(next) {
   mode = next;
+  buildMenuOpen = next === 'build';
   ghost = null; movingId = null;
   updateUI();
 }
 function cancel() {
+  if (buildMenuOpen) { closeBuildMenu(); return; }
   if (ghost) { ghost = null; movingId = null; }
   else selectedId = null;
   updateUI();
+}
+function closeBuildMenu() {
+  buildMenuOpen = false;
+  updateUI();
+  $('build-mode').focus({ preventScroll: true });
+}
+function toggleBuildMenu() {
+  if (buildMenuOpen) closeBuildMenu();
+  else { setMode('build'); $('close-build-menu').focus({ preventScroll: true }); }
 }
 function snapGhost() {
   if (!ghost || !pointer) return;
@@ -74,14 +90,17 @@ function snapGhost() {
 }
 function chooseType(type) {
   mode = 'build'; movingId = null; selectedId = null;
+  buildMenuOpen = false;
   ghost = { type, x: 26, y: 5, z: 0, rotation: 0 };
   snapGhost();
   updateUI();
+  canvas.focus({ preventScroll: true });
 }
 function startMove() {
   const object = selected();
   if (!object) return;
   mode = 'build'; movingId = object.id; ghost = { ...object };
+  buildMenuOpen = false;
   // The original remains solid until the player confirms the new position.
   updateUI();
 }
@@ -129,7 +148,8 @@ for (const [index, [type, definition]] of Object.entries(Object.entries(TYPES)))
   $('catalog').append(button);
 }
 $('walk-mode').onclick = () => setMode('walk');
-$('build-mode').onclick = () => setMode('build');
+$('build-mode').onclick = toggleBuildMenu;
+$('close-build-menu').onclick = closeBuildMenu;
 $('move-object').onclick = startMove;
 $('rotate-object').onclick = rotate;
 $('rotate-ghost').onclick = rotate;
@@ -164,7 +184,7 @@ function resize() {
   const rect = canvas.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
   canvas.width = Math.round(rect.width * dpr); canvas.height = Math.round(rect.height * dpr);
   view = { width: rect.width, height: rect.height, vertical: rect.width < 570,
-    scale: rect.width < 570 ? Math.min((rect.height - 100) / WAGON.width, (rect.width - 80) / WAGON.depth) : Math.min((rect.width - 110) / WAGON.width, (rect.height - 120) / WAGON.depth), dpr };
+    scale: rect.width < 570 ? Math.max(1, Math.min((rect.height - 400) / WAGON.width, (rect.width - 80) / WAGON.depth)) : Math.min((rect.width - 110) / WAGON.width, (rect.height - 120) / WAGON.depth), dpr };
   document.querySelector('.scale span').style.width = `${view.scale * 4}px`;
 }
 function screenToWorld(event) {
@@ -205,7 +225,7 @@ window.addEventListener('keydown', event => {
   if (event.ctrlKey || event.metaKey || event.altKey) return;
   if (movement[event.code]) { event.preventDefault(); keys.add(event.code); return; }
   if (event.repeat) return;
-  const actions = { Digit1: () => setMode('walk'), Digit2: () => setMode('build'), Digit3: () => chooseType('frame'), Digit4: () => chooseType('storage'), Digit5: () => chooseType('workbench'), KeyR: rotate, KeyM: startMove, Escape: cancel, Delete: deleteSelected };
+  const actions = { Digit1: () => setMode('walk'), Digit2: toggleBuildMenu, KeyB: toggleBuildMenu, Digit3: () => chooseType('frame'), Digit4: () => chooseType('storage'), Digit5: () => chooseType('workbench'), KeyR: rotate, KeyM: startMove, Escape: cancel, Delete: deleteSelected };
   if (actions[event.code]) { event.preventDefault(); actions[event.code](); }
 });
 window.addEventListener('keyup', event => keys.delete(event.code));
