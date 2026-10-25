@@ -83,7 +83,7 @@ with sync_playwright() as p:
     page.keyboard.press('Tab');page.locator('#world-pipe-palette [data-pipe-shape]').select_option('vertical');page.locator('#world-pipe-palette [data-pipe-choose]').click()
     click_world(page,6.5,6.5)
     assert snapshot(page)['pipes'][-1]['faces']==['nz','pz']
-    saved=snapshot(page);assert saved['version']==3
+    saved=snapshot(page);assert saved['version']==4
     page.reload();page.wait_for_selector('.catalog-card',state='attached');assert snapshot(page)==saved
     expect(page.locator('#world-network summary')).to_contain_text('Связи: 1')
     page.screenshot(path='/workspace/shared/trail-stage3-wagon.png')
@@ -101,4 +101,4 @@ with sync_playwright() as p:
     assert phone.evaluate('document.documentElement.scrollWidth<=innerWidth')
     assert not errors,errors
     browser.close()
-    print('PASS: drawn directed connection; highlight; break/repair; moving/rotating equipment and editing port face/offset; add/remove ports; collision rejection; outside height layers and vertical pipe; v3 save/reload; mobile pipe brush/erase; no JS errors')
+    print('PASS: drawn directed connection; highlight; break/repair; moving/rotating equipment and editing port face/offset; add/remove ports; collision rejection; outside height layers and vertical pipe; v4 save/reload; mobile pipe brush/erase; no JS errors')

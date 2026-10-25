@@ -1,3 +1,4 @@
+import { ensureSimulation, canonicalSimulation, simulationError, deletionError, pipeTokens } from './simulation.js';
 import { WAGON, PLAYER, TYPES, EQUIPMENT, localSize, dimensions, intersects, validOrientation, transformBox } from './geometry.js';
 export { WAGON, PLAYER, TYPES, EQUIPMENT, localSize, dimensions, intersects } from './geometry.js';
 import { portsError, canonicalPorts, networkError, rebuildGraph, canonicalPipe, pipeScope, pipeShapeError, allPipes, pipeHitsPlayer, cellKey, sameCell, routeCells, autoPortFaces, DIRECTIONS, OPPOSITE, worldPipe, rotateFace, localFace, adjacent, worldPorts } from './logistics.js';
@@ -67,17 +68,17 @@ function canonicalObject(object) {
   if (object.orientation) result.orientation = [...object.orientation];
   if (object.type === 'frame' || Object.hasOwn(EQUIPMENT, object.type)) Object.assign(result, localSize(object));
   if (object.type === 'frame') Object.assign(result, { mount: object.mount || 'floor', nextItemId: object.nextItemId ?? 1, children: (object.children || []).map(canonicalObject), pipes: (object.pipes || []).map(canonicalPipe) });
-  else Object.assign(result, { ports: canonicalPorts(object), nextPortId: object.nextPortId ?? 3 });
+  else Object.assign(result, { ports: canonicalPorts(object), nextPortId: object.nextPortId ?? (['filter','centrifuge'].includes(object.type)?4:3) });
   return result;
 }
 export function createState(demo = true) {
-  const state = { version: 3, nextId: 5, nextPipeId: 1, pipes: [], player: { x: 3, y: 6, angle: 0 }, objects: demo ? [
+  const state = { version: 4, nextId: 5, nextPipeId: 1, pipes: [], player: { x: 3, y: 6, angle: 0 }, objects: demo ? [
     { id: 'object-1', type: 'frame', x: 7, y: 1, z: 0, rotation: 0 },
     { id: 'object-2', type: 'frame', x: 19, y: 1, z: 0, rotation: 0 },
     { id: 'object-3', type: 'workbench', x: 31, y: 8, z: 0, rotation: 0 },
     { id: 'object-4', type: 'storage', x: 40, y: 1, z: 0, rotation: 0 }
   ].map(canonicalObject) : [] };
-  rebuildGraph(state); return state;
+  rebuildGraph(state); ensureSimulation(state); return state;
 }
 export function putObject(state, candidate, movingId = null) {
   if (movingId && !state.objects.some(item => item.id === movingId)) return 'Объект для перемещения не найден';
@@ -109,8 +110,10 @@ export function putEquipment(state, frameId, candidate, movingId = null) {
   return '';
 }
 export function removeEquipment(state, frameId, id) {
+  const error=deletionError(state,`${frameId}/${id}`);if(error)return error;
   const frame = state.objects.find(item => item.id === frameId && item.type === 'frame');
   if (frame) { frame.children = frame.children.filter(item => item.id !== id); rebuildGraph(state); }
+  return "";
 }
 export function equipmentPlacementError(state, frameId, candidate, ignoreId = null) {
   const frame = state.objects.find(item => item.id === frameId && item.type === 'frame');
@@ -221,9 +224,10 @@ export function connectEndpoints(state, first, second, preview = false) {
   return error;
 }
 export function removePipe(state, id) {
+  if(pipeTokens(state,id).length)return 'Сначала забери содержимое трубы: ресурсы не должны теряться';
   state.pipes = state.pipes.filter(pipe => pipe.id !== id);
   for (const frame of state.objects.filter(item => item.type === 'frame')) frame.pipes = frame.pipes.filter(pipe => pipe.id !== id);
-  rebuildGraph(state);
+  rebuildGraph(state); return "";
 }
 export function findPipe(state, id) {
   const outside = state.pipes.find(pipe => pipe.id === id);
@@ -241,7 +245,7 @@ export function updatePipeFaces(state, id, faces) {
 }
 // Convert a local child box to wagon coordinates, including the parent's rotation.
 export function worldEquipment(frame, item) { return transformBox(frame, item); }
-export function removeObject(state, id) { state.objects = state.objects.filter(item => item.id !== id); rebuildGraph(state); }
+export function removeObject(state, id) { const object=state.objects.find(o=>o.id===id),error=deletionError(state,id,(object?.pipes||[]).map(p=>p.id));if(error)return error;state.objects = state.objects.filter(item => item.id !== id); rebuildGraph(state);return ""; }
 export function canStand(state, player) {
   return Number.isFinite(player.x) && Number.isFinite(player.y) && player.x >= PLAYER.radius && player.x <= WAGON.width - PLAYER.radius && player.y >= PLAYER.radius && player.y <= WAGON.depth - PLAYER.radius && !state.objects.some(object => hitsPlayer(object, player)) && !allPipes(state).some(pipe => pipeHitsPlayer(pipe, player));
 }
@@ -260,13 +264,13 @@ export function movePlayer(state, dx, dy, seconds) {
   }
 }
 export function serialize(state) {
-  return JSON.stringify({ version: 3, wagon: WAGON, nextId: state.nextId, nextPipeId: state.nextPipeId, pipes: state.pipes.map(canonicalPipe), player: state.player, objects: state.objects.map(canonicalObject) }, null, 2);
+  return JSON.stringify({ version: 4, wagon: WAGON, nextId: state.nextId, nextPipeId: state.nextPipeId, simulation: canonicalSimulation(state), pipes: state.pipes.map(canonicalPipe), player: state.player, objects: state.objects.map(canonicalObject) }, null, 2);
 }
 export function deserialize(text) {
   if (text.length > 1_000_000) throw new Error('Файл слишком большой');
   let data;
   try { data = JSON.parse(text); } catch { throw new Error('Файл не содержит корректный JSON'); }
-  if (!data || ![1, 2, 3].includes(data.version)) throw new Error('Неподдерживаемая версия сохранения');
+  if (!data || ![1, 2, 3, 4].includes(data.version)) throw new Error('Неподдерживаемая версия сохранения');
   if (!data.wagon || Object.keys(WAGON).some(key => data.wagon[key] !== WAGON[key])) throw new Error('Сохранение предназначено для другого вагона');
   if (!Array.isArray(data.objects) || data.objects.length > 5760) throw new Error('Некорректный список объектов');
   if (!Number.isSafeInteger(data.nextId) || data.nextId < 1) throw new Error('Некорректный счётчик объектов');
@@ -278,7 +282,7 @@ export function deserialize(text) {
       pipe.faces = [first, pipe.faces.includes(OPPOSITE[first]) || pipe.faces.length < 2 ? OPPOSITE[first] : pipe.faces.find(f => f !== first)]; migratedPipes++;
     }
   }
-  migratePipes(data.pipes); for (const object of data.objects) if (object?.type === 'frame') migratePipes(object.pipes);
+  if(data.version<4)migratePipes(data.pipes); for (const object of data.objects) if (data.version<4&&object?.type === 'frame') migratePipes(object.pipes);
   const result = createState(false), ids = new Set();
   if (migratedPipes) result.migrationNotice = `Старые трубы обновлены: ${migratedPipes}. Ответвления убраны — проверь соединения.`;
   result.nextPipeId = data.nextPipeId ?? 1;
@@ -296,5 +300,6 @@ export function deserialize(text) {
   result.player = { x: data.player.x, y: data.player.y, angle: data.player.angle };
   result.nextId = data.nextId;
   rebuildGraph(result);
-  return result;
+  if(data.version===4){const error=simulationError(result,data.simulation);if(error)throw new Error(error);result.simulation=structuredClone(data.simulation);}
+  ensureSimulation(result);return result;
 }

@@ -185,3 +185,30 @@ body[data-screen=editor] .toast { top: auto; bottom: 32px; }
 .nearby-connections .field { display: block; }
 .nearby-connections .field-label { display: block; }
 .nearby-connections select { width: 100%; min-width: 0; }
+/* Production stays in compact controls and contextual inspectors. */
+#world-simulation { position: absolute; left: 8px; top: 80px; pointer-events: auto; max-width: calc(100% - 16px); }
+.simulation-controls { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; padding: 6px; }
+.simulation-clock { color: var(--muted); }
+.inventory { position: relative; }
+.inventory > .resource-stock { display: none; }
+.inventory[open] > .resource-stock { display: flex; position: absolute; bottom: 24px; left: 0; min-width: 170px; padding: 8px; background: var(--surface); border: 1px solid var(--line); z-index: 3; }
+.production-inspector { padding: 8px 0; border-top: 1px solid var(--line); margin-top: 8px; }
+.production-inspector h3 { margin: 0 0 5px; font-size: 12px; }
+.production-status { color: var(--focus); margin: 5px 0; }
+.production-inspector progress { width: 100%; height: 7px; accent-color: #8ed8bf; margin-bottom: 6px; }
+.resource-stock { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.resource-chip { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.resource-icon { width: 8px; height: 8px; display: inline-block; flex-shrink: 0; }
+.resource-icon.circle { border-radius: 50%; }
+.resource-icon.diamond { transform: rotate(45deg); width: 7px; height: 7px; }
+.resource-icon.triangle { clip-path: polygon(50% 0,100% 100%,0 100%); }
+.buffer-row { margin: 5px 0; }
+.capacity-field { display: flex; align-items: center; gap: 5px; margin: 8px 0; flex-wrap: wrap; }
+.capacity-field input { width: 60px; }
+.production-inspector .tool-row { flex-wrap: wrap; }
+.production-inspector select { max-width: 150px; }
+#editor-simulation .panel { border: 0; padding: 0; margin-bottom: 6px; }
+@media(max-width:700px){ #world-simulation { top: 152px; max-width: calc(100% - 16px); } #world-network { top: 220px; } .simulation-controls { gap: 4px; } .simulation-clock { font-size: 10px; } }
+
+.hud.menu-open #world-simulation { visibility: hidden; }
+#frame-editor[data-menu-side=right] #editor-menu { left: auto; right: 8px; }

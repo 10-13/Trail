@@ -1,3 +1,6 @@
+import { TICK_SECONDS, ensureSimulation, simulationTick, pipeTokens } from './simulation.js';
+import { createSimulationControls, createProductionInspector, drawProductionGlyph } from './production-ui.js';
+import { createProductionDemo } from './production-demo.js';
 import { WAGON, PLAYER, TYPES, EQUIPMENT, dimensions, worldEquipment, createState, placementError, putObject, removeObject, movePlayer, serialize, deserialize, pipePlacementError, putPipe, paintPipeRoute, removePipe, findPipe, updatePipeFaces, updatePorts } from './core.js';
 import { rotateObject } from './geometry.js';
 import { createFrameEditor } from './frame-editor.js';
@@ -11,7 +14,8 @@ const STORAGE_KEY = 'trail.stage1.layout.v1';
 let state = createState(), selectedId = null, ghost = null, movingId = null;
 let erase = false, stroke = null, hoverId = null;
 let selectedPipeId = null, pipeAnchor = null, highlightedPipes = new Set();
-let buildMenuOpen = false;
+let buildMenuOpen = false, simulationAccumulator=0, demoBackup=null;
+try{demoBackup=sessionStorage.getItem('trail.production.backup');}catch{}
 let visibleLayer = 'all';
 let showGrid = true, pointer = null, dirty = false, toastTimer, previousTime = 0;
 let view = { width: 1, height: 1, scale: 1, vertical: false };
@@ -33,7 +37,18 @@ function newFrameClearance() {
 frameFields.height.oninput = newFrameClearance;
 $('frame-mount').onchange = () => { if ($('frame-mount').value === 'ceiling') frameFields.height.value = '0.5'; newFrameClearance(); };
 newFrameClearance();
-const frameEditor = createFrameEditor({ getState: () => state, onChange: () => { markDirty(); updateUI(); }, onClose: () => { keys.clear(); updateUI(); canvas.focus({ preventScroll: true }); } });
+const frameEditor = createFrameEditor({ onSimulationStep:stepSimulation,onSimulationChange:simulationChanged,onDemo:toggleDemo,demoActive:()=>!!demoBackup,getState: () => state, onChange: () => { markDirty(); updateUI(); }, onClose: () => { keys.clear(); resize(); updateUI(); canvas.focus({ preventScroll: true }); } });
+const simulationControls=createSimulationControls($('world-simulation'),{getState:()=>state,changed:simulationChanged,step:stepSimulation,demo:toggleDemo,demoActive:()=>!!demoBackup});
+const productionInspector=createProductionInspector($('world-production'),{getState:()=>state,getSelection:()=>!ghost&&!erase?(selectedPipeId?{pipeId:selectedPipeId}:selected()?{owner:selectedId,type:selected().type}:null):null,changed:()=>{markDirty();updateUI();},message:toast});
+function refreshSimulation(){simulationControls.refresh();productionInspector.refresh();frameEditor.tick();}
+function simulationChanged(){simulationAccumulator=0;markDirty();refreshSimulation();}
+function stepSimulation(){simulationTick(state);markDirty();refreshSimulation();}
+function toggleDemo(){
+  if(frameEditor.isOpen)frameEditor.close();
+  if(demoBackup){const backup=demoBackup;demoBackup=null;try{sessionStorage.removeItem('trail.production.backup');}catch{}restore(backup,'Твоя схема восстановлена');toast('Твоя схема восстановлена');}
+  else{demoBackup=serialize(state);try{sessionStorage.setItem('trail.production.backup',demoBackup);}catch{}state=createProductionDemo();selectedId=null;selectedPipeId=null;ghost=null;erase=false;buildMenuOpen=false;simulationAccumulator=0;updateUI();frameEditor.open(state.objects[0].id);toast('128 нефти → фильтр → центрифуга → бак. Нажми «Пуск». «Вернуть схему» возвращает твою компоновку.');}
+  markDirty();refreshSimulation();
+}
 const rotationAxis = createRotationControl($('world-rotation'), rotate);
 const networkPanel = createNetworkPanel($('world-network'), { getState: () => state, onHighlight: ids => { highlightedPipes = ids; } });
 const portsEditor = createPortsEditor($('world-ports'), {
@@ -97,7 +112,7 @@ function updateUI() {
   const area = occupied.size;
   $('occupancy').innerHTML = `${Math.round(area / (WAGON.width * WAGON.depth) * 100)}<small>%</small>`;
   $('control-hints').innerHTML = `<span><kbd>W A S D</kbd> движение</span><span><kbd>Tab</kbd> блоки</span><span><kbd>⌫</kbd> удаление</span><span><kbd>Esc</kbd> ${ghost || erase ? 'убрать кисть' : 'снять выбор'}</span>`;
-  portsEditor.refresh(); pipeInspector.refresh(); networkPanel.refresh();
+  simulationControls.refresh(); productionInspector.refresh(); portsEditor.refresh(); pipeInspector.refresh(); networkPanel.refresh();
   updatePlacement();
 }
 function updatePlacement() {
@@ -182,7 +197,7 @@ function save() {
 }
 function restore(text, message) {
   const restored = deserialize(text); // Validate everything before replacing current state.
-  state = restored; selectedId = null; ghost = null; movingId = null; keys.clear();
+  state = restored; simulationAccumulator=0; selectedId = null; ghost = null; movingId = null; keys.clear();
   erase = false; stroke = null; hoverId = null; selectedPipeId = null; pipeAnchor = null;
   dirty = false; $('save-state').textContent = message;
   updateUI();
@@ -244,6 +259,7 @@ $('import-file').onchange = async event => {
 
 function resize() {
   const rect = canvas.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
+  if(!rect.width||!rect.height)return;
   canvas.width = Math.round(rect.width * dpr); canvas.height = Math.round(rect.height * dpr);
   view = { width: rect.width, height: rect.height, vertical: rect.width < 570,
     scale: rect.width < 570 ? Math.max(1, Math.min((rect.height - 400) / WAGON.width, (rect.width - 80) / WAGON.depth)) : Math.min((rect.width - 110) / WAGON.width, (rect.height - 120) / WAGON.depth), dpr };
@@ -277,9 +293,9 @@ function applyBrush(report = true) {
   stroke?.add(key);
   if (erase) {
     const pipe = pipeAt(pointer);
-    if (pipe) { removePipe(state, pipe.id); selectedPipeId = null; markDirty(); updateUI(); return; }
+    if (pipe) { const error=removePipe(state,pipe.id);if(error){toast(error,true);return;} selectedPipeId = null; markDirty(); updateUI(); return; }
     const object = objectAt(pointer);
-    if (object) { removeObject(state, object.id); if (selectedId === object.id) selectedId = null; markDirty(); updateUI(); }
+    if (object) { const error=removeObject(state,object.id);if(error){toast(error,true);return;} if (selectedId === object.id) selectedId = null; markDirty(); updateUI(); }
     return;
   }
   if (!ghost) return;
@@ -360,6 +376,7 @@ function drawObject(object, isGhost = false) {
     for (const item of object.children || []) {
       const world = worldEquipment(object, item), box = dimensions(world), childColor = EQUIPMENT[item.type].color;
       rect(world.x - object.x + 0.08, world.y - object.y + 0.08, box.width - 0.16, box.depth - 0.16, `${childColor}55`, childColor, 0.05);
+      drawProductionGlyph(ctx,item.type,{x:world.x-object.x,y:world.y-object.y,width:box.width,height:box.depth},ensureSimulation(state).containers[`${object.id}/${item.id}`]);
     }
   } else if (object.type === 'storage') {
     rect(0.35, 0.35, d.width - 0.7, d.depth - 0.7, null, `${color}88`);
@@ -400,7 +417,7 @@ function render() {
     drawObject(object); ctx.globalAlpha = 1;
   }
   const pipeView = { axes: ['x','y'], scale: 1, ox: 0, oy: 0, height: WAGON.depth, flip: false, unit: true };
-  for (const pipe of state.graph.pipes) drawProjectedPipe(ctx, pipe, pipeView, { alpha: pipe.z === $('pipe-height').valueAsNumber * 4 ? 1 : .25, highlight: highlightedPipes.has(pipe.id) || selectedPipeId === pipe.id });
+  for (const pipe of state.graph.pipes) drawProjectedPipe(ctx, pipe, pipeView, { alpha: pipe.z === $('pipe-height').valueAsNumber * 4 ? 1 : .25, highlight: highlightedPipes.has(pipe.id) || selectedPipeId === pipe.id, contents:pipeTokens(state,pipe.id) });
   for (const port of state.graph.ports) drawProjectedPort(ctx, port, pipeView, port.attached);
   const player = state.player;
   ctx.save(); ctx.translate(player.x, player.y);
@@ -417,6 +434,9 @@ function render() {
 let accumulator = 0;
 function frame(time) {
   if (previousTime) accumulator += Math.min((time - previousTime) / 1000, 0.1);
+  if(previousTime&&ensureSimulation(state).running)simulationAccumulator+=Math.min((time-previousTime)/1000,.25);
+  else if(!ensureSimulation(state).running)simulationAccumulator=0;
+  while(simulationAccumulator>=TICK_SECONDS){simulationTick(state);simulationAccumulator-=TICK_SECONDS;markDirty();refreshSimulation();}
   previousTime = time;
   let dx = 0, dy = 0;
   if (!frameEditor.isOpen) for (const key of keys) { const vector = movement[key]; if (vector) { dx += vector[0]; dy += vector[1]; } }

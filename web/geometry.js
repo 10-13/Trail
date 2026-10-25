@@ -8,7 +8,9 @@ export const TYPES = Object.freeze({
 });
 export const EQUIPMENT = Object.freeze({
   machine: Object.freeze({ name: 'Тестовый модуль', short: 'Модуль', width: 2, depth: 2, height: 2, color: '#88c5ce' }),
-  tank: Object.freeze({ name: 'Тестовая ёмкость', short: 'Ёмкость', width: 2, depth: 2, height: 4, color: '#b5cd8b' })
+  filter: Object.freeze({ name: 'Фильтр', short: 'Фильтр', width: 2, depth: 2, height: 3, color: '#e9ce75' }),
+  centrifuge: Object.freeze({ name: 'Центрифуга', short: 'Центрифуга', width: 2, depth: 2, height: 3, color: '#ce9ab6' }),
+  tank: Object.freeze({ name: 'Бак', short: 'Бак', width: 2, depth: 2, height: 4, color: '#b5cd8b' })
 });
 export function localSize(object) {
   if (object.type === 'pipe') return { width: 1, depth: 1, height: 1 };

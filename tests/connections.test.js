@@ -87,7 +87,7 @@ test('joining a dangling neighbor pipe extends it, and a blocked bridge is atomi
 });
 test('legacy branching saves are normalized without rejecting the whole layout',()=>{
   const {state,a}=neighbors();paintPipeRoute(state,a.id,{x:3,y:2,z:1},{x:5,y:2,z:1});const data=JSON.parse(serialize(state));
-  data.objects[0].pipes[1].faces=['nx','px','py'];data.objects[0].pipes[0].faces=[];
+  data.version=3;data.objects[0].pipes[1].faces=['nx','px','py'];data.objects[0].pipes[0].faces=[];
   const loaded=deserialize(JSON.stringify(data));assert.ok(loaded.migrationNotice);assert.ok(allPipes(loaded).every(p=>p.faces.length===2));
   assert.equal(loaded.objects.length,2);
 });

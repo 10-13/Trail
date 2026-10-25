@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#141817">
-  <meta name="description" content="Поезд-завод. Первый игровой прототип: исследуйте вагон и стройте свою базу.">
+  <meta name="description" content="Поезд-завод. Поезд-завод: строительство и производство с ресурсами в трубах.">
   <title>TRAIL — Поезд-завод</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -16,7 +16,7 @@
   <div class="hud">
     <header class="top-hud">
       <div class="location panel">
-        <div class="brand"><span>╬</span> TRAIL <small>ЭТАП 03</small></div>
+        <div class="brand"><span>╬</span> TRAIL <small>ЭТАП 04</small></div>
         <div class="location-detail">Вагон 001 <span>12 × 3 м</span><span class="stationary">● На стоянке</span></div>
         <div class="metrics"><span>Объекты <b id="object-count">04</b></span><span>Занято <b id="occupancy">0%</b></span><span id="tool-label"></span></div>
       </div>
@@ -45,9 +45,9 @@
       <div class="selection-summary"><div class="inspector-icon" id="selection-icon">↟</div><div class="selection-description"><div class="section-label" id="selection-label">ОБЪЕКТ</div><h2 id="selection-title"></h2><p id="selection-detail"></p></div></div>
       <div id="object-actions" class="object-actions" hidden><button id="edit-frame" hidden>Открыть каркас <kbd>E</kbd></button><button id="move-object">↔ Переместить <kbd>M</kbd></button><button id="rotate-object" hidden>↻ Повернуть <kbd>R</kbd></button><button id="delete-object" class="danger">Удалять <kbd>⌫</kbd></button></div>
       <div id="build-actions" class="object-actions" hidden><button id="rotate-ghost" hidden>↻ Повернуть <kbd>R</kbd></button><button id="cancel-build">Отменить <kbd>Esc</kbd></button></div>
-      <div id="world-rotation"></div><div id="world-ports"></div><div id="world-pipe-inspector"></div>
+      <div id="world-rotation"></div><div id="world-production"></div><div id="world-ports"></div><div id="world-pipe-inspector"></div>
     </section>
-    <div id="world-network"></div>
+    <div id="world-network"></div><div id="world-simulation"></div>
 
     <div id="placement" class="placement" role="status" hidden></div>
     <div class="scale">1 м <span></span></div>
@@ -68,15 +68,15 @@
         <section class="editor-properties" aria-label="Свойства выбранного блока">
     <div class="editor-tools panel" aria-label="Инструменты редактора"><button id="close-frame-editor">← В вагон</button><button id="editor-menu-button" aria-expanded="false" aria-controls="editor-menu">Блоки <kbd>Tab</kbd></button><button id="editor-erase" aria-pressed="false">Удаление <kbd>⌫</kbd></button><button id="save-editor" class="save-button">Сохранить</button></div>
 
-          <div id="editor-rotation"></div><div id="neighbor-connections"></div><p id="item-empty" class="muted">Tab — выбрать блок. Backspace — удалять по клику. Линии на видах задают срезы: перетаскивай их за ручки.</p>
+          <div id="editor-simulation"></div><div id="editor-rotation"></div><div id="neighbor-connections"></div><p id="item-empty" class="muted">Tab — выбрать блок. Backspace — удалять по клику. Линии на видах задают срезы: перетаскивай их за ручки.</p>
           <form id="item-form" hidden><h3 id="item-title"></h3><div id="item-fields"></div><div class="tool-row"><button type="submit">Применить</button><button id="item-rotate" hidden type="button">Повернуть <span id="item-rotation"></span></button><button id="item-move" type="button">Перенести</button><button id="item-delete" type="button" class="danger">Кисть удаления</button></div></form>
-          <div id="item-ports"></div><div id="editor-pipe-inspector"></div><div id="editor-network"></div>
+          <div id="item-production"></div><div id="item-ports"></div><div id="editor-pipe-inspector"></div><div id="editor-network"></div>
         </section>
       </div>
     </div>
     <aside id="editor-menu" class="build-menu panel" aria-label="Выбор блока" hidden>
       <div class="menu-heading"><h2>Добавить блок</h2><button id="close-editor-menu" class="icon-button" aria-label="Закрыть меню блоков">×</button></div>
-      <div id="brush-fields"></div><div class="catalog"><button data-equipment-type="machine">Модуль</button><button data-equipment-type="tank">Ёмкость</button></div>
+      <div id="brush-fields"></div><div class="catalog"><button data-equipment-type="machine">Модуль</button><button data-equipment-type="tank">Бак</button><button data-equipment-type="filter">Фильтр</button><button data-equipment-type="centrifuge">Центрифуга</button></div>
       <div id="editor-pipe-palette"></div>
       <details id="editor-frame-options"><summary>Размеры каркаса</summary><form id="frame-form"><div id="frame-size-fields"></div><label class="field"><span class="field-label">Крепление</span><select id="edit-frame-mount"><option value="floor">К полу</option><option value="ceiling">К потолку</option></select></label><button type="submit">Применить к каркасу</button><p id="frame-clearance" class="muted"></p></form></details>
     </aside>

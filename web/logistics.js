@@ -1,4 +1,4 @@
-import { WAGON, PLAYER, dimensions, localSize, orientationOf, transformCell, inverseOrientation, transformBox } from './geometry.js';
+import { WAGON, PLAYER, EQUIPMENT, dimensions, localSize, orientationOf, transformCell, inverseOrientation, transformBox } from './geometry.js';
 
 export const PIPE_CAPACITY = 4;
 export const DIRECTIONS = Object.freeze({ nx: [-1, 0, 0], px: [1, 0, 0], ny: [0, -1, 0], py: [0, 1, 0], nz: [0, 0, -1], pz: [0, 0, 1] });
@@ -23,10 +23,12 @@ export function localCell(frame, world) {
 export function localFace(frame, face) { return frame ? rotateFace(face, { orientation: inverseOrientation(frame) }) : face; }
 export function defaultPorts(object) {
   const size = localSize(object);
-  return [
+  const ports = [
     { id: 'port-1', kind: 'input', face: 'nx', u: Math.floor(size.depth / 2), v: 0 },
     { id: 'port-2', kind: 'output', face: 'px', u: Math.floor(size.depth / 2), v: 0 }
   ];
+  if(object.type==='filter'||object.type==='centrifuge'){ports[0].resources=[object.type==='filter'?'crude':'filtered'];ports[1].resources=[object.type==='filter'?'filtered':'clean'];ports.push({id:'port-3',kind:'output',face:'py',u:0,v:0,resources:[object.type==='filter'?'sludge':'residue']});}
+  return ports;
 }
 export const portsOf = object => object.ports === undefined ? defaultPorts(object) : object.ports;
 export function portLimits(object, face) {
@@ -34,12 +36,13 @@ export function portLimits(object, face) {
   return face === 'px' || face === 'nx' ? [size.depth, size.height] : face === 'py' || face === 'ny' ? [size.width, size.height] : [size.width, size.depth];
 }
 export function portsError(object) {
-  const ports = portsOf(object), next = object.nextPortId ?? 3;
+  const ports = portsOf(object), next = object.nextPortId ?? (['filter','centrifuge'].includes(object.type)?4:3);
   if (!Array.isArray(ports) || ports.length > 256 || !Number.isSafeInteger(next) || next < 1) return 'Некорректный список портов';
   const ids = new Set(), positions = new Set();
   for (const port of ports) {
     if (!port || typeof port.id !== 'string' || !/^port-[1-9]\d*$/.test(port.id) || ids.has(port.id) || Number(port.id.slice(5)) >= next) return 'Некорректный идентификатор порта';
     if (!['input', 'output'].includes(port.kind) || !Object.hasOwn(DIRECTIONS, port.face)) return 'Некорректное направление порта';
+    if(port.resources!==undefined&&(!Array.isArray(port.resources)||new Set(port.resources).size!==port.resources.length||port.resources.some(r=>!['crude','filtered','clean','sludge','residue'].includes(r))))return 'Некорректный фильтр ресурсов порта';
     const [u, v] = portLimits(object, port.face);
     if (!Number.isInteger(port.u) || !Number.isInteger(port.v) || port.u < 0 || port.v < 0 || port.u >= u || port.v >= v) return 'Порт выходит за границы грани объекта';
     const key = `${port.face},${port.u},${port.v}`;
@@ -49,7 +52,7 @@ export function portsError(object) {
   return '';
 }
 export function canonicalPorts(object) {
-  return portsOf(object).map(port => ({ id: port.id, kind: port.kind, face: port.face, u: port.u, v: port.v }));
+  return portsOf(object).map(port => ({ id: port.id, kind: port.kind, face: port.face, u: port.u, v: port.v, resources: [...(port.resources||[])] }));
 }
 export function portCell(object, port) {
   const size = localSize(object);
@@ -68,7 +71,7 @@ export function worldPorts(state) {
       let cell = portCell(object, port), face = rotateFace(port.face, object);
       if (frame) { cell = rotateCell(cell, localSize(frame), frame); cell = { x: cell.x + frame.x, y: cell.y + frame.y, z: cell.z + frame.z }; face = rotateFace(face, frame); }
       const owner = frame ? `${frame.id}/${object.id}` : object.id;
-      result.push({ ...port, id: `${owner}/${port.id}`, portId: port.id, owner, objectId: object.id, frameId: frame?.id || null, cell, face, neighbor: adjacent(cell, face), label: frame ? `Каркас ${frame.id.slice(7)} / ${object.type === 'machine' ? 'модуль' : 'ёмкость'} ${object.id.slice(5)}` : `${object.type === 'storage' ? 'Ящик' : 'Верстак'} ${object.id.slice(7)}` });
+      result.push({ ...port, id: `${owner}/${port.id}`, portId: port.id, owner, objectId: object.id, frameId: frame?.id || null, cell, face, neighbor: adjacent(cell, face), label: frame ? `Каркас ${frame.id.slice(7)} / ${EQUIPMENT[object.type].short.toLowerCase()} ${object.id.slice(5)}` : `${object.type === 'storage' ? 'Ящик' : 'Верстак'} ${object.id.slice(7)}` });
     }
   }
   for (const object of state.objects) if (object.type === 'frame') { for (const item of object.children || []) add(item, object); } else add(object);

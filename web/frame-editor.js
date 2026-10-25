@@ -1,3 +1,5 @@
+import { ensureSimulation, pipeTokens } from './simulation.js';
+import { createSimulationControls, createProductionInspector, drawProductionGlyph } from './production-ui.js';
 import { EQUIPMENT, dimensions, localSize, equipmentPlacementError, putEquipment, removeEquipment, updateFrame, updatePorts, putPipe, pipePlacementError, paintPipeRoute, removePipe, findPipe, updatePipeFaces, connectEndpoints } from './core.js';
 import { rotateObject } from './geometry.js';
 import { el, numberField, readVoxels } from './ui.js';
@@ -13,7 +15,7 @@ const SIZE_KEY = { x: 'width', y: 'depth', z: 'height' };
 const meter = value => (value / 4).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 const $ = id => document.getElementById(id);
 
-export function createFrameEditor({ getState, onChange, onClose }) {
+export function createFrameEditor({ getState, onChange, onClose, onSimulationStep, onSimulationChange, onDemo, demoActive }) {
   const screen = $('frame-editor'), wagon = $('viewport'), hud = document.querySelector('.hud');
   let frameId = null, selectedId = null, draft = null, drag = null, brush = null, erase = false, menuOpen = false;
   let pointerView = null, pointerPoint = null, hoverId = null, stroke = null, movingId = null;
@@ -23,6 +25,8 @@ export function createFrameEditor({ getState, onChange, onClose }) {
   const selected = () => frame()?.children.find(item => item.id === selectedId);
   const equipmentError = (unused, item, ignoreId = null) => equipmentPlacementError(getState(), frameId, item, ignoreId);
   const message = (text = '', invalid = false) => { $('editor-message').textContent = text; $('editor-message').classList.toggle('error', invalid); };
+  const simulationControls=createSimulationControls($('editor-simulation'),{getState,changed:onSimulationChange,step:onSimulationStep,demo:onDemo,demoActive});
+  const productionInspector=createProductionInspector($('item-production'),{getState,getSelection:()=>!brush&&!erase?(selectedPipeId?{pipeId:selectedPipeId}:selected()?{owner:`${frameId}/${selectedId}`,type:selected().type}:null):null,changed,message});
   const portsEditor = createPortsEditor($('item-ports'), {
     getObject: () => !brush && !erase ? selected() : null,
     apply: (ports, next) => updatePorts(getState(), frameId, selectedId, ports, next), changed, message
@@ -108,7 +112,7 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     // Keep the top view under the larger elevation, aligned to its long dimension.
     const wide = size.width >= size.depth, top = views.find(view => view.key === 'xy');
     top.axes = wide ? ['x', 'y'] : ['y', 'x']; top.sizes = wide ? ['width', 'depth'] : ['depth', 'width'];
-    $('editor-views').dataset.topSide = wide ? 'left' : 'right';
+    $('editor-views').dataset.topSide = wide ? 'left' : 'right';screen.dataset.menuSide=wide?'left':'right';
     $('editor-views').style.gridTemplateColumns = `minmax(min(130px, 40vw), ${size.width}fr) minmax(min(130px, 40vw), ${size.depth}fr)`;
     $('editor-views').style.gridTemplateRows = `minmax(min(150px, 30vh), ${size.height}fr) minmax(min(150px, 30vh), ${Math.min(size.width, size.depth)}fr)`;
     const item = selected();
@@ -124,7 +128,7 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     $('editor-menu-button').setAttribute('aria-expanded', menuOpen);
     $('editor-erase').classList.toggle('active', erase);
     $('editor-erase').setAttribute('aria-pressed', erase);
-    refreshNearby(); portsEditor.refresh(); pipeInspector.refresh(); networkPanel.refresh();
+    simulationControls.refresh(); productionInspector.refresh(); refreshNearby(); portsEditor.refresh(); pipeInspector.refresh(); networkPanel.refresh();
     drawAll();
   }
   function changed() { onChange(); refresh(); }
@@ -180,7 +184,7 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     if (view.flip) { ctx.strokeStyle = '#ec6262'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(view.ox, bottom); ctx.lineTo(right, bottom); ctx.stroke(); }
     const objects = [...frame().children].sort((a, b) => Number(a.id === selectedId) - Number(b.id === selectedId));
     for (const item of objects) drawItem(ctx, view, item, false);
-    for (const pipe of pipesInFrame(getState(), frame())) drawProjectedPipe(ctx, pipe, view, { alpha: inSlice(view, { ...pipe, type: 'pipe', rotation: 0 }) ? 1 : .18, highlight: highlightedPipes.has(pipe.id) || selectedPipeId === pipe.id });
+    for (const pipe of pipesInFrame(getState(), frame())) drawProjectedPipe(ctx, pipe, view, { alpha: inSlice(view, { ...pipe, type: 'pipe', rotation: 0 }) ? 1 : .18, highlight: highlightedPipes.has(pipe.id) || selectedPipeId === pipe.id, contents: pipeTokens(getState(),pipe.id) });
     const localPorts = portsInFrame(getState(), frame()).filter(port => port.frameId === frameId);
     for (const port of localPorts) {
       ctx.save(); ctx.globalAlpha = port.cell[view.depth] === layers[view.depth] ? 1 : .18;
@@ -215,7 +219,8 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     ctx.globalAlpha = preview ? .8 : drag?.kind === 'item' && active ? .2 : inSlice(view, item) ? 1 : .18;
     ctx.fillStyle = `${color}45`; ctx.strokeStyle = color; ctx.lineWidth = active ? 2 : 1;
     ctx.fillRect(box.x + 1, box.y + 1, Math.max(0, box.width - 2), Math.max(0, box.height - 2));
-    ctx.strokeRect(box.x + 1, box.y + 1, Math.max(0, box.width - 2), Math.max(0, box.height - 2)); ctx.globalAlpha = 1;
+    ctx.strokeRect(box.x + 1, box.y + 1, Math.max(0, box.width - 2), Math.max(0, box.height - 2));
+    drawProductionGlyph(ctx,item.type,box,preview?null:ensureSimulation(getState()).containers[`${frameId}/${item.id}`]);ctx.globalAlpha = 1;
   }
   function slicePosition(view, index) {
     const value = layers[view.axes[index]] + .5;
@@ -268,9 +273,9 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     stroke?.cells.add(key);
     if (erase) {
       const pipe = pipeAt(view, p);
-      if (pipe) { removePipe(getState(), pipe.id); if (selectedPipeId === pipe.id) selectedPipeId = null; changed(); return; }
+      if (pipe) { const error=removePipe(getState(),pipe.id);if(error){message(error,true);return;} if (selectedPipeId === pipe.id) selectedPipeId = null; changed(); return; }
       const item = itemAt(view, p);
-      if (item) { removeEquipment(getState(), frameId, item.id); if (selectedId === item.id) selectedId = null; changed(); }
+      if (item) { const error=removeEquipment(getState(),frameId,item.id);if(error){message(error,true);return;} if (selectedId === item.id) selectedId = null; changed(); }
       return;
     }
     if (!draft) return;
@@ -398,6 +403,7 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     if (actions[event.code]) { event.preventDefault(); event.stopImmediatePropagation(); if (!event.repeat) actions[event.code](); }
   });
   return {
+    tick(){if(!screen.hidden){productionInspector.refresh();simulationControls.refresh();drawAll();}},
     get isOpen() { return !screen.hidden; },
     open(id) {
       if (!getState().objects.some(item => item.id === id && item.type === 'frame')) return;

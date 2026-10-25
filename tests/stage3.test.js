@@ -122,16 +122,16 @@ test('low pipes block the character and pipes at two metres permit passage under
   for (let step=0;step<120;step++) movePlayer(state,1,0,1/60);
   assert.ok(state.player.x <= 9.001);
 });
-test('v3 round trip rebuilds graph and migrates v2 layouts without losing geometry', () => {
+test('v4 round trip rebuilds graph and migrates v2 layouts without losing geometry', () => {
   const { state, frame } = pair(); paintPipeRoute(state, frame.id, cell(2), cell(7));
   const text = serialize(state), loaded = deserialize(text);
   assert.equal(serialize(loaded), text);
   assert.equal(loaded.graph.links.length, 1);
-  assert.equal(JSON.parse(text).version, 3);
+  assert.equal(JSON.parse(text).version, 4);
   const old = JSON.parse(text); old.version = 2; delete old.nextPipeId; delete old.pipes;
   for (const object of old.objects) { delete object.pipes; for (const item of object.children || []) { delete item.ports; delete item.nextPortId; } }
   const migrated = deserialize(JSON.stringify(old));
-  assert.equal(migrated.version, 3); assert.equal(migrated.objects[0].children[0].ports.length, 2);
+  assert.equal(migrated.version, 4); assert.equal(migrated.objects[0].children[0].ports.length, 2);
 });
 test('invalid ports and corrupt pipes are rejected without replacing the current state', () => {
   const { state, frame } = pair(); paintPipeRoute(state, frame.id, cell(2), cell(7));

@@ -1,3 +1,4 @@
+import { RESOURCES } from './simulation.js';
 import { el, numberField, readVoxels } from './ui.js';
 import { DIRECTIONS, FACE_NAMES, OPPOSITE, portLimits, portsOf, PIPE_CAPACITY } from './logistics.js';
 
@@ -60,14 +61,17 @@ export function createPortsEditor(host, { getObject, apply, changed, message }) 
       for(const [key,name] of [['input','Вход'],['output','Выход']]){const option=el('option','',name);option.value=key;kind.append(option);} kind.value=port.kind;
       const face=el('select'); face.setAttribute('aria-label','Грань порта');
       for(const [key,name] of Object.entries(FACE_NAMES)){const option=el('option','',name);option.value=key;face.append(option);} face.value=port.face;
+      const resource=el('select');resource.setAttribute('aria-label','Ресурс порта');
+      for(const [key,name]of [['','Все ресурсы'],...Object.entries(RESOURCES).map(([r,d])=>[r,d.name])]){const option=el('option','',name);option.value=key;resource.append(option);}
+      if(port.resources?.length>1){const option=el('option','','Несколько ресурсов');option.value=port.resources.join(',');resource.append(option);}resource.value=(port.resources||[]).join(',');
       const [a,b]=portLimits(object,port.face);
       const u=numberField('Сдвиг 1, м',`${host.id}-${port.id}-u`,port.u/4,0,(a-1)/4);
       const v=numberField('Сдвиг 2, м',`${host.id}-${port.id}-v`,port.v/4,0,(b-1)/4);
       const coordinates=()=>{const [a,b]=portLimits(object,face.value);u.input.max=(a-1)/4;v.input.max=(b-1)/4;};face.onchange=coordinates;
       const save=el('button','','Применить'), remove=el('button','danger','×'); save.type=remove.type='button';remove.setAttribute('aria-label','Удалить порт');
-      save.onclick=()=>{try{commit(portsOf(object).map(p=>p.id===port.id?{...p,kind:kind.value,face:face.value,u:readVoxels(u.input),v:readVoxels(v.input)}:{...p}),object.nextPortId??3);}catch(error){message(error.message,true);}};
+      save.onclick=()=>{try{commit(portsOf(object).map(p=>p.id===port.id?{...p,kind:kind.value,face:face.value,resources:resource.value?resource.value.split(','):[],u:readVoxels(u.input),v:readVoxels(v.input)}:{...p}),object.nextPortId??3);}catch(error){message(error.message,true);}};
       remove.onclick=()=>commit(portsOf(object).filter(p=>p.id!==port.id),object.nextPortId??3);
-      row.append(kind,face,u.row,v.row,save,remove);rows.append(row);
+      row.append(kind,face,resource,u.row,v.row,save,remove);rows.append(row);
     }
   }
   return { refresh };
@@ -98,13 +102,21 @@ export function createPipeInspector(host,{getPipe,apply,changed,message}) {
   wrapper.append(label,options,button);host.append(wrapper);
   return {refresh(){const pipe=getPipe();wrapper.hidden=!pipe;if(!pipe)return;label.textContent=`Труба · вместимость ${PIPE_CAPACITY} ед. · высота ${((pipe.worldZ??pipe.z)/4).toLocaleString('ru-RU')} м`;for(const [face,input] of Object.entries(checks))input.checked=pipe.faces.includes(face);}};
 }
-export function drawProjectedPipe(ctx,pipe,view,{alpha=1,highlight=false,preview=false,error=false}={}) {
+export function drawProjectedPipe(ctx,pipe,view,{alpha=1,highlight=false,preview=false,error=false,contents=[]}={}) {
   const scale=view.scale,x=view.ox+(pipe[view.axes[0]]+.5)*scale,y=view.oy+(view.flip?view.height-pipe[view.axes[1]]-.5:pipe[view.axes[1]]+.5)*scale;
   const color=error?'#ed8275':highlight?'#f0d888':preview?'#b5cd8b':'#77c8bc';ctx.save();ctx.globalAlpha*=alpha;ctx.strokeStyle=color;ctx.fillStyle=color;
   ctx.lineWidth=Math.max(scale*.14,view.unit?0.08:2);ctx.lineCap='round';
   ctx.fillStyle=`${color}20`;ctx.fillRect(x-scale*.5,y-scale*.5,scale,scale);ctx.fillStyle=color;
   for(const face of pipe.faces){const vector=DIRECTIONS[face],dx=vector[{x:0,y:1,z:2}[view.axes[0]]],dy=vector[{x:0,y:1,z:2}[view.axes[1]]]*(view.flip?-1:1);ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+dx*scale*.5,y+dy*scale*.5);ctx.stroke();}
   ctx.beginPath();ctx.arc(x,y,scale*.17,0,Math.PI*2);ctx.fill();
+  for(const [i,token]of contents.entries()){
+    const def=RESOURCES[token.resource],r=scale*.105,cx=x+(i%2?1:-1)*scale*.15,cy=y+(i<2?-1:1)*scale*.15;
+    ctx.fillStyle=def.color;ctx.beginPath();
+    if(def.shape==='circle')ctx.arc(cx,cy,r,0,Math.PI*2);
+    else if(def.shape==='diamond'){ctx.moveTo(cx,cy-r);ctx.lineTo(cx+r,cy);ctx.lineTo(cx,cy+r);ctx.lineTo(cx-r,cy);ctx.closePath();}
+    else if(def.shape==='triangle'){ctx.moveTo(cx,cy-r);ctx.lineTo(cx+r,cy+r);ctx.lineTo(cx-r,cy+r);ctx.closePath();}
+    else ctx.rect(cx-r,cy-r,r*2,r*2);ctx.fill();
+  }
   if(preview||highlight){ctx.lineWidth=view.unit ? .04 : 1;ctx.strokeRect(x-scale*.46,y-scale*.46,scale*.92,scale*.92);}ctx.restore();
 }
 export function drawProjectedPort(ctx,port,view,attached=false) {
