@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#141817">
+  <meta name="description" content="Поезд-завод. Первый игровой прототип: исследуйте вагон и стройте свою базу.">
+  <title>TRAIL — Поезд-завод</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="TRAIL — главная"><span class="brand-symbol">╬</span> TRAIL<span class="brand-sub">ПОЕЗД-ЗАВОД</span></a>
+    <span class="prototype">ПРОТОТИП <b>01</b></span>
+    <div class="save-tools">
+      <span id="save-state">Нет сохранения</span>
+      <button id="load" class="quiet">Загрузить</button>
+      <button id="save" class="save-button">↓ <span>Сохранить</span></button>
+    </div>
+  </header>
+  <main>
+    <aside class="sidebar">
+      <div class="eyebrow">МАСТЕРСКАЯ / 01</div>
+      <h1>Всё начинается<br>с одного вагона.</h1>
+      <p class="intro">Обживай пространство.<br>Собирай свою будущую фабрику.</p>
+      <div class="section-label">РЕЖИМ</div>
+      <div class="mode-switch" role="group" aria-label="Режим игры">
+        <button id="walk-mode" class="active" aria-pressed="true">↟ Ходьба <kbd>1</kbd></button>
+        <button id="build-mode" aria-pressed="false">⊞ Строить <kbd>2</kbd></button>
+      </div>
+      <div class="catalog-heading"><span class="section-label">ОБЪЕКТЫ</span><span>03</span></div>
+      <div id="catalog" class="catalog"></div>
+      <div class="sidebar-bottom">
+        <div class="small-led"></div><span>Первый этап</span>
+        <p>Вагон · персонаж · размещение</p>
+        <div class="file-tools"><button id="export" class="text-button">Экспорт JSON ↗</button><button id="import" class="text-button">Импорт JSON ↙</button></div>
+        <input id="import-file" type="file" accept=".json,application/json" hidden>
+      </div>
+    </aside>
+    <section class="workspace" aria-label="Игровое пространство">
+      <div class="workspace-heading">
+        <div><div class="eyebrow">ТВОЯ МОБИЛЬНАЯ БАЗА</div><h2>Грузовой вагон <span>№ 001</span></h2></div>
+        <div class="stationary"><span class="small-led"></span> НА СТОЯНКЕ</div>
+      </div>
+      <div class="workspace-toolbar">
+        <div class="view-label"><span>⊞</span> ВИД СВЕРХУ <span class="divider">/</span><span id="mode-label">ХОДЬБА</span></div>
+        <button id="grid-toggle" class="quiet" aria-pressed="true">Сетка <span>0,25 м</span></button>
+      </div>
+      <div id="viewport" class="viewport">
+        <canvas id="game" tabindex="0" aria-label="Вагон сверху. WASD или стрелки — движение. 2 — строительство; выберите объект в каталоге и нажмите на свободную клетку."></canvas>
+        <div class="viewport-corner">ВАГОН 001 <span>48 × 12 ЯЧЕЕК</span></div>
+        <div class="north-mark">↑<span>НОС</span></div>
+        <div class="scale">1 м <span></span></div>
+        <div id="placement" class="placement" role="status" hidden></div>
+        <div id="touch-pad" class="touch-pad" aria-label="Движение персонажа">
+          <button data-direction="up" aria-label="Вверх">↑</button><button data-direction="left" aria-label="Влево">←</button><button data-direction="down" aria-label="Вниз">↓</button><button data-direction="right" aria-label="Вправо">→</button>
+        </div>
+      </div>
+      <div class="status-row"><span><i class="legend-dot player-dot"></i>Твой персонаж</span><span><i class="legend-dot frame-dot"></i>Каркас</span><span><i class="legend-dot structure-dot"></i>Свободное сооружение</span><span class="height-note">ВЫСОТА ВАГОНА 2,5 М</span></div>
+      <section class="inspector" aria-label="Выбранный объект">
+        <div class="inspector-icon" id="selection-icon">↟</div>
+        <div class="selection-description"><div class="section-label" id="selection-label">ПЕРСОНАЖ</div><h3 id="selection-title">Осмотрись внутри</h3><p id="selection-detail">Передвигайся по вагону и выбирай место для строительства.</p></div>
+        <div id="object-actions" class="object-actions" hidden><button id="move-object">↔ Переместить <kbd>M</kbd></button><button id="rotate-object">↻ Повернуть <kbd>R</kbd></button><button id="delete-object" class="danger">Удалить <kbd>Del</kbd></button></div>
+        <div id="build-actions" class="object-actions" hidden><button id="rotate-ghost">↻ Повернуть <kbd>R</kbd></button><button id="cancel-build">Отменить <kbd>Esc</kbd></button></div>
+      </section>
+      <div class="bottom-panels">
+        <section class="controls-panel"><div class="section-label">УПРАВЛЕНИЕ</div><div id="control-hints"><span><kbd>W A S D</kbd> / <kbd>↑ ↓ ← →</kbd> движение</span><span><kbd>2</kbd> строительство</span><span><kbd>ЛКМ</kbd> выбрать объект</span></div></section>
+        <section class="metrics"><div><span class="section-label">ГАБАРИТЫ</span><strong>12 × 3 <small>м</small></strong></div><div><span class="section-label">ОБЪЕКТЫ</span><strong id="object-count">04</strong></div><div><span class="section-label">ЗАНЯТО</span><strong id="occupancy">0<small>%</small></strong></div></section>
+      </div>
+      <footer><span>TRAIL <span class="footer-line">/</span> ЭКСПЕРИМЕНТАЛЬНАЯ МАСТЕРСКАЯ</span><span>ЭТАП 01 — ВАГОН И СТРОИТЕЛЬСТВО</span></footer>
+    </section>
+  </main>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script type="module" src="game.js"></script>
+</body>
+</html>
