@@ -1,12 +1,15 @@
-import { WAGON, PLAYER, TYPES, EQUIPMENT, dimensions, worldEquipment, createState, placementError, putObject, removeObject, movePlayer, serialize, deserialize } from './core.js';
+import { WAGON, PLAYER, TYPES, EQUIPMENT, dimensions, worldEquipment, createState, placementError, putObject, removeObject, movePlayer, serialize, deserialize, pipePlacementError, putPipe, paintPipeRoute, removePipe, findPipe, updatePipeFaces, updatePorts } from './core.js';
 import { createFrameEditor } from './frame-editor.js';
 import { numberField, readVoxels } from './ui.js';
+import { allPipes, rotateFace, sameCell } from './logistics.js';
+import { createPipePalette, createPortsEditor, createPipeInspector, createNetworkPanel, drawProjectedPipe, drawProjectedPort } from './network-ui.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('game'), ctx = canvas.getContext('2d');
 const STORAGE_KEY = 'trail.stage1.layout.v1';
 let state = createState(), selectedId = null, ghost = null, movingId = null;
 let erase = false, stroke = null, hoverId = null;
+let selectedPipeId = null, pipeAnchor = null, highlightedPipes = new Set();
 let buildMenuOpen = false;
 let visibleLayer = 'all';
 let showGrid = true, pointer = null, dirty = false, toastTimer, previousTime = 0;
@@ -30,6 +33,22 @@ frameFields.height.oninput = newFrameClearance;
 $('frame-mount').onchange = () => { if ($('frame-mount').value === 'ceiling') frameFields.height.value = '0.5'; newFrameClearance(); };
 newFrameClearance();
 const frameEditor = createFrameEditor({ getState: () => state, onChange: () => { markDirty(); updateUI(); }, onClose: () => { keys.clear(); updateUI(); canvas.focus({ preventScroll: true }); } });
+const networkPanel = createNetworkPanel($('world-network'), { getState: () => state, onHighlight: ids => { highlightedPipes = ids; } });
+const portsEditor = createPortsEditor($('world-ports'), {
+  getObject: () => !ghost && !erase && selected()?.type !== 'frame' ? selected() : null,
+  apply: (ports, next) => updatePorts(state, null, selectedId, ports, next), changed: () => { markDirty(); updateUI(); }, message: toast
+});
+const pipeInspector = createPipeInspector($('world-pipe-inspector'), {
+  getPipe: () => { const found = selectedPipeId && !ghost && !erase ? findPipe(state, selectedPipeId) : null; const parent = found?.frameId ? state.objects.find(item => item.id === found.frameId) : null; return found ? { ...found.pipe, faces: found.pipe.faces.map(face => rotateFace(face, parent?.rotation || 0)), worldZ: allPipes(state).find(pipe => pipe.id === selectedPipeId)?.z } : null; },
+  apply: faces => { const found = findPipe(state, selectedPipeId); const parent = found?.frameId ? state.objects.find(item => item.id === found.frameId) : null; return updatePipeFaces(state, selectedPipeId, faces.map(face => rotateFace(face, (4 - (parent?.rotation || 0)) % 4))); }, changed: () => { markDirty(); updateUI(); }, message: toast
+});
+createPipePalette($('world-pipe-palette'), config => {
+  try { ghost = { ...config, x: 26, y: 5, z: readVoxels($('pipe-height')), rotation: 0 }; }
+  catch (error) { toast(error.message, true); return; }
+  selectedId = null; selectedPipeId = null; erase = false; movingId = null; buildMenuOpen = false; pipeAnchor = null;
+  snapGhost(); updateUI(); canvas.focus({ preventScroll: true });
+});
+$('pipe-height').oninput = () => { if (ghost?.type === 'pipe' && $('pipe-height').checkValidity()) ghost.z = $('pipe-height').valueAsNumber * 4; pipeAnchor = null; updatePlacement(); };
 function editFrame() {
   if (selected()?.type !== 'frame' || ghost) return;
   keys.clear(); buildMenuOpen = false; updateUI(); frameEditor.open(selectedId);
@@ -58,14 +77,16 @@ function updateUI() {
     button.setAttribute('aria-pressed', active);
   });
   const object = ghost || selected();
-  $('inspector').hidden = !object || erase;
+  const isPipe = object?.type === 'pipe';
+  const definition = isPipe ? { name: 'Труба', icon: '━', color: '#77c8bc', category: 'Трубопровод' } : object ? TYPES[object.type] : null;
+  $('inspector').hidden = (!object && !selectedPipeId) || erase;
   $('object-actions').hidden = !selected() || !!ghost;
   $('edit-frame').hidden = selected()?.type !== 'frame' || !!ghost;
   $('build-actions').hidden = !ghost;
-  $('selection-icon').textContent = object ? TYPES[object.type].icon : '↟';
-  $('selection-icon').style.color = object ? TYPES[object.type].color : '#93d7cf';
-  $('selection-label').textContent = ghost ? movingId ? 'ПЕРЕМЕЩЕНИЕ · ЛКМ ДЛЯ УСТАНОВКИ' : 'СТРОИТЕЛЬСТВО · ЛКМ ДЛЯ УСТАНОВКИ' : object ? object.type === 'frame' ? object.mount === 'ceiling' ? 'ПОТОЛОЧНЫЙ КАРКАС' : 'НАПОЛЬНЫЙ КАРКАС' : TYPES[object.type].category.toUpperCase() : 'ПЕРСОНАЖ';
-  $('selection-title').textContent = object ? TYPES[object.type].name : 'Осмотрись внутри';
+  $('selection-icon').textContent = definition?.icon || (selectedPipeId ? '━' : '↟');
+  $('selection-icon').style.color = definition?.color || '#93d7cf';
+  $('selection-label').textContent = ghost ? movingId ? 'ПЕРЕМЕЩЕНИЕ · ЛКМ ДЛЯ УСТАНОВКИ' : 'СТРОИТЕЛЬСТВО · ЛКМ ДЛЯ УСТАНОВКИ' : object ? object.type === 'frame' ? object.mount === 'ceiling' ? 'ПОТОЛОЧНЫЙ КАРКАС' : 'НАПОЛЬНЫЙ КАРКАС' : definition.category.toUpperCase() : '';
+  $('selection-title').textContent = definition?.name || (selectedPipeId ? 'Труба' : 'Осмотрись внутри');
   $('selection-detail').textContent = object ? `${objectSize(object)} · ${ghost ? 'выбери свободное место на сетке' : `вдоль ${meters(object.x)} м · поперёк ${meters(object.y)} м · поворот ${object.rotation * 90}°`}` : 'Передвигайся по вагону и выбирай место для строительства.';
   if (object?.type === 'frame') $('selection-detail').textContent += ` · низ ${meters(object.z)} м${object.mount === 'ceiling' ? object.z >= PLAYER.height ? ' · проход свободен' : ' · проход перекрыт' : ''} · объектов внутри: ${object.children?.length || 0}`;
   $('object-count').textContent = String(state.objects.length).padStart(2, '0');
@@ -74,20 +95,21 @@ function updateUI() {
   const area = occupied.size;
   $('occupancy').innerHTML = `${Math.round(area / (WAGON.width * WAGON.depth) * 100)}<small>%</small>`;
   $('control-hints').innerHTML = `<span><kbd>W A S D</kbd> движение</span><span><kbd>Tab</kbd> блоки</span><span><kbd>⌫</kbd> удаление</span><span><kbd>Esc</kbd> ${ghost || erase ? 'убрать кисть' : 'снять выбор'}</span>`;
+  portsEditor.refresh(); pipeInspector.refresh(); networkPanel.refresh();
   updatePlacement();
 }
 function updatePlacement() {
   $('placement').hidden = !ghost && !erase;
   if (erase) { $('placement').classList.add('invalid'); $('placement').textContent = 'Удаление · нажми на объект · Esc отменить'; return; }
   if (!ghost) return;
-  const error = placementError(state, ghost, movingId);
+  const error = ghost.type === 'pipe' ? ghost.autoRoute ? paintPipeRoute(state, null, pipeAnchor, ghost, true) : pipePlacementError(state, ghost) : placementError(state, ghost, movingId);
   $('placement').classList.toggle('invalid', !!error);
   $('placement').textContent = error ? `× ${error}` : '✓ Можно установить · ЛКМ';
 }
 function cancel() {
   if (buildMenuOpen) { closeBuildMenu(); return; }
-  if (ghost || erase) { ghost = null; movingId = null; erase = false; hoverId = null; }
-  else selectedId = null;
+  if (ghost || erase) { ghost = null; movingId = null; erase = false; hoverId = null; pipeAnchor = null; }
+  else { selectedId = null; selectedPipeId = null; }
   updateUI();
 }
 function closeBuildMenu() {
@@ -100,12 +122,13 @@ function toggleBuildMenu() {
   else { buildMenuOpen = true; stroke = null; updateUI(); $('close-build-menu').focus({ preventScroll: true }); }
 }
 function toggleErase() {
-  erase = !erase; ghost = null; movingId = null; selectedId = null; buildMenuOpen = false; stroke = null;
+  erase = !erase; ghost = null; movingId = null; selectedId = null; selectedPipeId = null; buildMenuOpen = false; stroke = null; pipeAnchor = null;
   updateUI(); canvas.focus({ preventScroll: true });
 }
 function snapGhost() {
   if (!ghost || !pointer) return;
   const size = dimensions(ghost);
+  if (ghost.type === 'pipe') { ghost.x = Math.floor(pointer.x); ghost.y = Math.floor(pointer.y); updatePlacement(); return; }
   ghost.x = Math.floor(pointer.x - size.width / 2);
   ghost.y = Math.floor(pointer.y - size.depth / 2);
   updatePlacement();
@@ -118,7 +141,7 @@ function chooseType(type) {
     settings.mount = $('frame-mount').value;
     settings.children = []; settings.nextItemId = 1;
   }
-  erase = false; movingId = null; selectedId = null;
+  erase = false; movingId = null; selectedId = null; selectedPipeId = null;
   buildMenuOpen = false;
   ghost = { type, x: 26, y: 5, z: settings.mount === 'ceiling' ? WAGON.height - settings.height : 0, rotation: 0, ...settings };
   snapGhost();
@@ -134,6 +157,7 @@ function startMove() {
   updateUI();
 }
 function rotate() {
+  if (ghost?.type === 'pipe') { ghost.faces = ghost.faces.map(face => rotateFace(face, 1)); updateUI(); return; }
   if (ghost) { ghost.rotation = (ghost.rotation + 1) % 4; snapGhost(); updateUI(); return; }
   const object = selected();
   if (!object) return;
@@ -151,7 +175,7 @@ function save() {
 function restore(text, message) {
   const restored = deserialize(text); // Validate everything before replacing current state.
   state = restored; selectedId = null; ghost = null; movingId = null; keys.clear();
-  erase = false; stroke = null; hoverId = null;
+  erase = false; stroke = null; hoverId = null; selectedPipeId = null; pipeAnchor = null;
   dirty = false; $('save-state').textContent = message;
   updateUI();
 }
@@ -229,6 +253,10 @@ function objectAt(point, cycle = false) {
   const current = hits.findIndex(object => object.id === selectedId);
   return hits[cycle && current >= 0 ? (current + 1) % hits.length : 0];
 }
+function pipeAt(point) {
+  const height = $('pipe-height').valueAsNumber * 4;
+  return allPipes(state).find(pipe => pipe.x === Math.floor(point.x) && pipe.y === Math.floor(point.y) && pipe.z === height);
+}
 canvas.addEventListener('pointermove', event => {
   pointer = screenToWorld(event); snapGhost();
   hoverId = objectAt(pointer)?.id || null;
@@ -240,11 +268,18 @@ function applyBrush(report = true) {
   if (stroke?.has(key)) return;
   stroke?.add(key);
   if (erase) {
+    const pipe = pipeAt(pointer);
+    if (pipe) { removePipe(state, pipe.id); selectedPipeId = null; markDirty(); updateUI(); return; }
     const object = objectAt(pointer);
     if (object) { removeObject(state, object.id); if (selectedId === object.id) selectedId = null; markDirty(); updateUI(); }
     return;
   }
   if (!ghost) return;
+  if (ghost.type === 'pipe') {
+    const error = ghost.autoRoute ? paintPipeRoute(state, null, pipeAnchor, ghost) : putPipe(state, ghost);
+    if (error) { if (report) toast(error, true); return; }
+    pipeAnchor = { x: ghost.x, y: ghost.y, z: ghost.z }; markDirty(); updateUI(); return;
+  }
   const wasMoving = !!movingId;
   const error = putObject(state, ghost, movingId);
   if (error) { if (report) toast(error, true); return; }
@@ -257,13 +292,14 @@ canvas.addEventListener('pointerdown', event => {
   event.preventDefault(); canvas.focus({ preventScroll: true });
   pointer = screenToWorld(event); snapGhost();
   if (ghost || erase) {
-    stroke = new Set(); canvas.setPointerCapture(event.pointerId); applyBrush();
+    pipeAnchor = null; stroke = new Set(); canvas.setPointerCapture(event.pointerId); applyBrush();
   } else {
-    selectedId = objectAt(pointer, true)?.id || null;
+    selectedPipeId = pipeAt(pointer)?.id || null;
+    selectedId = selectedPipeId ? null : objectAt(pointer, true)?.id || null;
     updateUI();
   }
 });
-for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(name, () => { stroke = null; });
+for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(name, () => { stroke = null; pipeAnchor = null; });
 canvas.addEventListener('contextmenu', event => { event.preventDefault(); cancel(); });
 const movement = { KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1], KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0] };
 window.addEventListener('keydown', event => {
@@ -296,6 +332,10 @@ function textWorld(text, x, y, color = '#aebba1', size = 0.5) {
   ctx.fillStyle = color; ctx.font = `${size}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, 0, 0); ctx.restore();
 }
 function drawObject(object, isGhost = false) {
+  if (object.type === 'pipe') {
+    const error = object.autoRoute ? paintPipeRoute(state, null, pipeAnchor, object, true) : pipePlacementError(state, object);
+    drawProjectedPipe(ctx, object, { axes: ['x','y'], scale: 1, ox: 0, oy: 0, height: WAGON.depth, flip: false, unit: true }, { preview: true, error: !!error }); return;
+  }
   const d = dimensions(object), type = TYPES[object.type];
   const error = isGhost && placementError(state, object, movingId);
   const color = isGhost ? error ? '#ef8d78' : '#b6dd9a' : type.color;
@@ -351,6 +391,9 @@ function render() {
     if (movingId === object.id) ctx.globalAlpha *= 0.35;
     drawObject(object); ctx.globalAlpha = 1;
   }
+  const pipeView = { axes: ['x','y'], scale: 1, ox: 0, oy: 0, height: WAGON.depth, flip: false, unit: true };
+  for (const pipe of state.graph.pipes) drawProjectedPipe(ctx, pipe, pipeView, { alpha: pipe.z === $('pipe-height').valueAsNumber * 4 ? 1 : .25, highlight: highlightedPipes.has(pipe.id) || selectedPipeId === pipe.id });
+  for (const port of state.graph.ports) drawProjectedPort(ctx, port, pipeView, port.attached);
   const player = state.player;
   ctx.save(); ctx.translate(player.x, player.y);
   ctx.fillStyle = '#0005'; ctx.beginPath(); ctx.ellipse(0.12, 0.2, PLAYER.radius, PLAYER.radius, 0, 0, Math.PI * 2); ctx.fill();

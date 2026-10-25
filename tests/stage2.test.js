@@ -77,17 +77,17 @@ test('rotating and moving a frame preserves local equipment and computes world b
     assert.ok(world.y + size.depth <= current.y + outer.depth);
   }
 });
-test('v2 save round trip retains dimensions, mounting, nested equipment and counters', () => {
+test('save round trip retains dimensions, mounting, nested equipment and counters', () => {
   const state = createState(false);
   putObject(state, frame({ mount: 'ceiling', z: 8, height: 2 }));
   putEquipment(state, state.objects[0].id, item({ width: 3, rotation: 1 }));
-  assert.equal(JSON.parse(serialize(state)).version, 2);
+  assert.equal(JSON.parse(serialize(state)).version, 3);
   assert.equal(serialize(deserialize(serialize(state))), serialize(state));
 });
 test('stage 1 saves migrate without losing objects, orientation or player position', () => {
   const legacy = { version: 1, wagon: WAGON, nextId: 2, player: { x: 3, y: 6, angle: 0 }, objects: [{ id: 'object-1', type: 'frame', x: 10, y: 1, z: 0, rotation: 1 }] };
   const state = deserialize(JSON.stringify(legacy));
-  assert.equal(state.version, 2);
+  assert.equal(state.version, 3);
   assert.deepEqual(localSize(state.objects[0]), { width: 6, depth: 4, height: 8 });
   assert.equal(state.objects[0].mount, 'floor');
   assert.deepEqual(state.objects[0].children, []);

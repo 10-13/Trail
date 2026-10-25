@@ -1,5 +1,7 @@
-import { EQUIPMENT, dimensions, localSize, equipmentError, putEquipment, removeEquipment, updateFrame } from './core.js';
+import { EQUIPMENT, dimensions, localSize, equipmentPlacementError, putEquipment, removeEquipment, updateFrame, updatePorts, putPipe, pipePlacementError, paintPipeRoute, removePipe, findPipe, updatePipeFaces } from './core.js';
 import { el, numberField, readVoxels } from './ui.js';
+import { worldPorts, rotateFace, pipesInFrame } from './logistics.js';
+import { createPipePalette, createPortsEditor, createPipeInspector, createNetworkPanel, drawProjectedPipe, drawProjectedPort } from './network-ui.js';
 
 const PLANES = [
   { key: 'xz', title: 'Вдоль поезда', axes: ['x', 'z'], depth: 'y', sizes: ['width', 'height'], flip: true },
@@ -14,10 +16,26 @@ export function createFrameEditor({ getState, onChange, onClose }) {
   const screen = $('frame-editor'), wagon = $('viewport'), hud = document.querySelector('.hud');
   let frameId = null, selectedId = null, draft = null, drag = null, brush = null, erase = false, menuOpen = false;
   let pointerView = null, pointerPoint = null, hoverId = null, stroke = null, movingId = null;
+  let selectedPipeId = null, pipeAnchor = null, highlightedPipes = new Set();
   const layers = { x: 0, y: 0, z: 0 }, views = [], inputs = {}, frameInputs = {}, brushInputs = {};
   const frame = () => getState().objects.find(item => item.id === frameId);
   const selected = () => frame()?.children.find(item => item.id === selectedId);
+  const equipmentError = (unused, item, ignoreId = null) => equipmentPlacementError(getState(), frameId, item, ignoreId);
   const message = (text = '', invalid = false) => { $('editor-message').textContent = text; $('editor-message').classList.toggle('error', invalid); };
+  const portsEditor = createPortsEditor($('item-ports'), {
+    getObject: () => !brush && !erase ? selected() : null,
+    apply: (ports, next) => updatePorts(getState(), frameId, selectedId, ports, next), changed, message
+  });
+  const pipeInspector = createPipeInspector($('editor-pipe-inspector'), {
+    getPipe: () => !brush && !erase && selectedPipeId ? pipesInFrame(getState(), frame()).find(pipe => pipe.id === selectedPipeId) : null,
+    apply: faces => { const found = findPipe(getState(), selectedPipeId); const owner = found?.frameId ? getState().objects.find(item => item.id === found.frameId) : null; return updatePipeFaces(getState(), selectedPipeId, faces.map(face => rotateFace(rotateFace(face, frame().rotation), (4 - (owner?.rotation || 0)) % 4))); }, changed, message
+  });
+  const networkPanel = createNetworkPanel($('editor-network'), { getState, onHighlight: ids => { highlightedPipes = ids; drawAll(); } });
+  createPipePalette($('editor-pipe-palette'), config => {
+    brush = { ...config, x: 0, y: 0, z: 0, rotation: 0 }; erase = false; selectedId = null; selectedPipeId = null; movingId = null; menuOpen = false; draft = null; pipeAnchor = null;
+    refresh(); message('Начни у порта или на конце трубы и веди маршрут. Высота задаётся линиями срезов.');
+    (pointerView?.canvas || views[0].canvas).focus({ preventScroll: true });
+  });
   for (const [key, label, value, max] of [['width', 'Длина, м', 1.5, 12], ['depth', 'Ширина, м', 1, 3], ['height', 'Высота, м', 2, 2.5]]) {
     const field = numberField(label, `edit-frame-${key}`, value, 0.25, max);
     $('frame-size-fields').append(field.row); frameInputs[key] = field.input;
@@ -66,7 +84,7 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     const item = selected();
     $('item-form').hidden = !item || !!brush || erase;
     $('item-empty').hidden = !!item && !brush && !erase;
-    $('item-empty').textContent = erase ? 'Удаление: нажимай на блоки. Esc — убрать кисть.' : brush ? `${EQUIPMENT[brush.type].short} · ставь кликом или веди кисть. R — поворот. Высота задаётся линией среза на боковых видах.` : 'Tab — выбрать блок. Backspace — удалять по клику. Линии на видах задают срезы: перетаскивай их за ручки.';
+    $('item-empty').textContent = erase ? 'Удаление: нажимай на блоки и трубы. Esc — убрать кисть.' : brush ? `${brush.type === 'pipe' ? 'Труба' : EQUIPMENT[brush.type].short} · ставь кликом или веди кисть. R — поворот. Высота задаётся линией среза на боковых видах.` : 'Tab — выбрать блок. Backspace — удалять по клику. Линии на видах задают срезы: перетаскивай их за ручки.';
     if (item) {
       $('item-title').textContent = EQUIPMENT[item.type].name;
       for (const [key, input] of Object.entries(inputs)) input.value = item[key] / 4;
@@ -76,6 +94,7 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     $('editor-menu-button').setAttribute('aria-expanded', menuOpen);
     $('editor-erase').classList.toggle('active', erase);
     $('editor-erase').setAttribute('aria-pressed', erase);
+    portsEditor.refresh(); pipeInspector.refresh(); networkPanel.refresh();
     drawAll();
   }
   function changed() { onChange(); refresh(); }
@@ -85,10 +104,10 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     else (pointerView?.canvas || $('editor-menu-button')).focus({ preventScroll: true });
   }
   function clearTool() {
-    cancelDrag(); brush = null; draft = null; erase = false; movingId = null; menuOpen = false; refresh(); message();
+    cancelDrag(); brush = null; draft = null; erase = false; movingId = null; menuOpen = false; selectedPipeId = null; pipeAnchor = null; refresh(); message();
   }
   function toggleErase() {
-    cancelDrag(); erase = !erase; brush = null; draft = null; movingId = null; selectedId = null; menuOpen = false;
+    cancelDrag(); erase = !erase; brush = null; draft = null; movingId = null; selectedId = null; selectedPipeId = null; menuOpen = false; pipeAnchor = null;
     refresh(); message(erase ? 'Удаление · нажми на блок · Esc отменить' : 'Кисть удаления выключена');
     (pointerView?.canvas || $('editor-menu-button')).focus({ preventScroll: true });
   }
@@ -96,7 +115,7 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     try {
       const size = {};
       for (const [key, input] of Object.entries(brushInputs)) size[key] = readVoxels(input);
-      brush = { type, x: 0, y: 0, z: 0, rotation: 0, ...size }; erase = false; selectedId = null; movingId = null; menuOpen = false;
+      brush = { type, x: 0, y: 0, z: 0, rotation: 0, ...size }; erase = false; selectedId = null; selectedPipeId = null; movingId = null; menuOpen = false;
       draft = null; refresh(); message('Выбран блок. Нажимай на свободные места в любом виде.');
       (pointerView?.canvas || views[0].canvas).focus({ preventScroll: true });
     } catch (error) { message(error.message, true); }
@@ -131,6 +150,12 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     if (view.flip) { ctx.strokeStyle = '#ec6262'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(view.ox, bottom); ctx.lineTo(right, bottom); ctx.stroke(); }
     const objects = [...frame().children].sort((a, b) => Number(a.id === selectedId) - Number(b.id === selectedId));
     for (const item of objects) drawItem(ctx, view, item, false);
+    for (const pipe of pipesInFrame(getState(), frame())) drawProjectedPipe(ctx, pipe, view, { alpha: inSlice(view, { ...pipe, type: 'pipe', rotation: 0 }) ? 1 : .18, highlight: highlightedPipes.has(pipe.id) || selectedPipeId === pipe.id });
+    const localPorts = worldPorts({ objects: [{ ...frame(), x: 0, y: 0, z: 0, rotation: 0 }] });
+    for (const port of localPorts) {
+      ctx.save(); ctx.globalAlpha = port.cell[view.depth] === layers[view.depth] ? 1 : .18;
+      drawProjectedPort(ctx, port, view, getState().graph.ports.find(p => p.id === port.id)?.attached); ctx.restore();
+    }
     if (draft) drawItem(ctx, view, draft, true);
     for (let index = 0; index < 2; index++) drawSlice(ctx, view, index);
   }
@@ -142,6 +167,10 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     return { x: view.ox + item[view.axes[0]] * view.scale, y: view.oy + (view.flip ? view.height - item[view.axes[1]] - height : item[view.axes[1]]) * view.scale, width: width * view.scale, height: height * view.scale };
   }
   function drawItem(ctx, view, item, preview) {
+    if (item.type === 'pipe') {
+      const error = item.autoRoute ? paintPipeRoute(getState(), frameId, pipeAnchor, item, true) : pipePlacementError(getState(), item, frameId);
+      drawProjectedPipe(ctx, item, view, { preview: true, error: !!error }); return;
+    }
     const box = projected(view, item), active = item.id === selectedId;
     const error = preview && equipmentError(frame(), item, drag?.kind === 'item' ? selectedId : movingId);
     const color = preview ? error ? '#edaa9e' : '#b5cd8b' : erase && hoverId === item.id ? '#ed6b5d' : EQUIPMENT[item.type].color;
@@ -174,6 +203,9 @@ export function createFrameEditor({ getState, onChange, onClose }) {
       return inSlice(view, item) && p[0] >= item[view.axes[0]] && p[0] < item[view.axes[0]] + d[view.sizes[0]] && p[1] >= item[view.axes[1]] && p[1] < item[view.axes[1]] + d[view.sizes[1]];
     });
   }
+  function pipeAt(view, p) {
+    return pipesInFrame(getState(), frame()).find(pipe => pipe[view.depth] === layers[view.depth] && Math.floor(p[0]) === pipe[view.axes[0]] && Math.floor(p[1]) === pipe[view.axes[1]]);
+  }
   function sliceHit(event, view, allowBody) {
     const rect = view.canvas.getBoundingClientRect(), x = event.clientX - rect.left, y = event.clientY - rect.top;
     for (let index = 0; index < 2; index++) {
@@ -189,7 +221,7 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     if (!brush) return;
     draft = { ...brush }; const d = dimensions(draft);
     draft[view.depth] = layers[view.depth];
-    for (let index = 0; index < 2; index++) draft[view.axes[index]] = Math.floor(p[index] - d[view.sizes[index]] / 2 + 1e-8);
+    for (let index = 0; index < 2; index++) draft[view.axes[index]] = Math.floor(p[index] - (draft.type === 'pipe' ? 0 : d[view.sizes[index]] / 2) + 1e-8);
   }
   function applyBrush(view, p, report = true) {
     updateDraft(view, p);
@@ -197,11 +229,18 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     if (stroke?.cells.has(key)) return;
     stroke?.cells.add(key);
     if (erase) {
+      const pipe = pipeAt(view, p);
+      if (pipe) { removePipe(getState(), pipe.id); if (selectedPipeId === pipe.id) selectedPipeId = null; changed(); return; }
       const item = itemAt(view, p);
       if (item) { removeEquipment(getState(), frameId, item.id); if (selectedId === item.id) selectedId = null; changed(); }
       return;
     }
     if (!draft) return;
+    if (draft.type === 'pipe') {
+      const error = draft.autoRoute ? paintPipeRoute(getState(), frameId, pipeAnchor, draft) : putPipe(getState(), draft, frameId);
+      if (error) { message(error, true); return; }
+      pipeAnchor = { x: draft.x, y: draft.y, z: draft.z }; changed(); message('Труба установлена. Связи обновлены.'); return;
+    }
     const error = putEquipment(getState(), frameId, draft, movingId);
     if (error) { if (report) message(error, true); return; }
     if (movingId) { selectedId = movingId; brush = null; draft = null; movingId = null; stroke = null; }
@@ -211,14 +250,16 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     if (event.button !== 0 || drag || stroke) return;
     event.preventDefault(); view.canvas.focus({ preventScroll: true });
     pointerView = view; pointerPoint = point(event, view);
-    const hit = itemAt(view, pointerPoint), slice = sliceHit(event, view, !brush && !erase && !hit);
+    const hit = itemAt(view, pointerPoint), hitPipe = pipeAt(view, pointerPoint), slice = sliceHit(event, view, !brush && !erase && !hit && !hitPipe);
     if (slice >= 0) {
       drag = { kind: 'slice', view, index: slice, pointerId: event.pointerId }; draft = null;
       view.canvas.setPointerCapture(event.pointerId); return;
     }
     if (brush || erase) {
-      stroke = { view, pointerId: event.pointerId, cells: new Set() }; view.canvas.setPointerCapture(event.pointerId); applyBrush(view, pointerPoint); drawAll(); return;
+      pipeAnchor = null; stroke = { view, pointerId: event.pointerId, cells: new Set() }; view.canvas.setPointerCapture(event.pointerId); applyBrush(view, pointerPoint); drawAll(); return;
     }
+    if (hitPipe) { selectedPipeId = hitPipe.id; selectedId = null; refresh(); message(); return; }
+    selectedPipeId = null;
     if (!hit) { selectedId = null; refresh(); message(); return; }
     selectedId = hit.id; syncLayers(hit); refresh();
     drag = { kind: 'item', view, pointerId: event.pointerId, start: pointerPoint, original: { ...hit } }; draft = { ...hit };
@@ -251,10 +292,11 @@ export function createFrameEditor({ getState, onChange, onClose }) {
       }
       drag = null; draft = null; refresh();
     }
-    stroke = null;
+    stroke = null; pipeAnchor = null;
     if (view.canvas.hasPointerCapture(event.pointerId)) view.canvas.releasePointerCapture(event.pointerId);
   }
   function rotate() {
+    if (brush?.type === 'pipe') { brush.faces = brush.faces.map(face => rotateFace(face, 1)); if (pointerView && pointerPoint) updateDraft(pointerView, pointerPoint); refresh(); return; }
     if (brush) { brush.rotation = (brush.rotation + 1) % 4; if (pointerView && pointerPoint) updateDraft(pointerView, pointerPoint); refresh(); return; }
     const item = selected(); if (!item) return;
     const error = putEquipment(getState(), frameId, { ...item, rotation: (item.rotation + 1) % 4 }, selectedId);
@@ -288,7 +330,7 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     } catch (error) { message(error.message, true); }
   };
   function cancelDrag() {
-    const previous = drag || stroke; draft = null; drag = null; stroke = null;
+    const previous = drag || stroke; draft = null; drag = null; stroke = null; pipeAnchor = null;
     if (previous?.view.canvas.hasPointerCapture(previous.pointerId)) previous.view.canvas.releasePointerCapture(previous.pointerId);
   }
   const close = () => {
@@ -296,10 +338,11 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     document.body.dataset.screen = 'wagon'; onClose();
   };
   $('close-frame-editor').onclick = close;
-  screen.addEventListener('keydown', event => {
-    if (event.code === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey) { event.preventDefault(); event.stopPropagation(); if (!event.repeat) toggleMenu(); return; }
+  window.addEventListener('keydown', event => {
+    if (screen.hidden) return;
+    if (event.code === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey) { event.preventDefault(); event.stopImmediatePropagation(); if (!event.repeat) toggleMenu(); return; }
     if (event.key === 'Escape') {
-      event.preventDefault(); event.stopPropagation();
+      event.preventDefault(); event.stopImmediatePropagation();
       if (drag || stroke) { cancelDrag(); drawAll(); }
       else if (menuOpen) toggleMenu();
       else if (brush || erase) clearTool();
@@ -308,13 +351,13 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     }
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.target.isContentEditable || event.ctrlKey || event.metaKey || event.altKey) return;
     const actions = { Backspace: toggleErase, Delete: toggleErase, KeyR: rotate, KeyM: moveSelected };
-    if (actions[event.code]) { event.preventDefault(); event.stopPropagation(); if (!event.repeat) actions[event.code](); }
+    if (actions[event.code]) { event.preventDefault(); event.stopImmediatePropagation(); if (!event.repeat) actions[event.code](); }
   });
   return {
     get isOpen() { return !screen.hidden; },
     open(id) {
       if (!getState().objects.some(item => item.id === id && item.type === 'frame')) return;
-      frameId = id; selectedId = null; brush = null; erase = false; movingId = null; menuOpen = false; draft = null; drag = null; stroke = null; pointerView = null; pointerPoint = null;
+      frameId = id; selectedId = null; selectedPipeId = null; pipeAnchor = null; brush = null; erase = false; movingId = null; menuOpen = false; draft = null; drag = null; stroke = null; pointerView = null; pointerPoint = null;
       layers.x = layers.y = layers.z = 0;
       const size = localSize(frame());
       for (const [key, input] of Object.entries(brushInputs)) { input.max = size[key] / 4; input.value = Math.min(2, size[key]) / 4; }

@@ -157,3 +157,24 @@ body[data-screen=editor] .toast { top: auto; bottom: 32px; }
   .placement { top: 55px; }
   .toast { top: 90px; }
 }
+/* Logistics controls share the same compact native controls as construction. */
+.pipe-height { display: flex; align-items: center; gap: 4px; color: var(--muted); white-space: nowrap; }
+.pipe-height input { width: 58px; }
+.pipe-palette { margin-top: 12px; }
+.pipe-palette > button { width: 100%; margin-top: 6px; }
+.pipe-palette p { margin-top: 6px; }
+.face-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 4px; margin: 6px 0; }
+.face-options label { display: flex; align-items: center; gap: 4px; }
+.face-options input { width: 12px; height: 12px; padding: 0; accent-color: var(--focus); }
+.ports-editor { margin-top: 8px; }
+.port-row { padding: 6px 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 4px; }
+.port-row .field { display: block; margin: 0; }
+.port-row .field-label { display: block; }
+#world-network { position: absolute; top: 48px; right: 8px; width: min(330px,calc(100% - 16px)); pointer-events: auto; }
+.network-panel { padding: 5px 8px; margin-top: 8px; }
+.network-panel summary { margin: 0; }
+.network-links { max-height: 200px; overflow: auto; margin-top: 8px; }
+.network-links button { display: block; width: 100%; text-align: left; margin-bottom: 4px; white-space: normal; }
+.pipe-inspector { margin-top: 8px; }
+.inspector { max-height: min(50vh,450px); overflow: auto; }
+@media(max-width:700px) { .save-tools { flex-wrap: wrap; justify-content: flex-end; } #world-network { top: 160px; max-width: 240px; } .network-links { max-height: 130px; } }

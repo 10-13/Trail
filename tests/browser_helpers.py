@@ -39,16 +39,19 @@ def choose_equipment(page, kind='machine', **sizes):
 def view_geometry(page, plane, current):
     canvas = page.locator(f'#view-{plane}')
     image = Image.open(BytesIO(canvas.screenshot())).convert('RGB')
-    left, right, top, bottom = image.width, 0, image.height, 0
-    count = 0
+    columns = {}; points = []
     for index, (r, g, b) in enumerate(image.getdata()):
         # Gold boundary, including antialiasing against the blue canvas background.
         # Excludes red floor hatching, blue objects and the orange cut-plane handles.
-        if r > 65 and g > 60 and g > b + 12 and 1.16 < (r - 17) / max(1, g - 28) < 1.34:
+        if r > 65 and g > 60 and g > b + 12 and 1.22 < (r - 17) / max(1, g - 28) < 1.29:
             x, y = index % image.width, index // image.width
-            left, right, top, bottom = min(left, x), max(right, x), min(top, y), max(bottom, y)
-            count += 1
-    assert count, f'No gold frame boundary in {plane}'
+            columns[x] = columns.get(x, 0) + 1; points.append((x, y))
+    assert points, f'No gold frame boundary in {plane}'
+    # Borders are long strokes; a port marker must not expand the measured frame.
+    edges = [x for x, count in columns.items() if count >= max(columns.values()) * .45]
+    left, right = min(edges), max(edges)
+    edge_rows = [y for x, y in points if x <= left + 1 or x >= right - 1]
+    top, bottom = min(edge_rows), max(edge_rows)
     rect = canvas.bounding_box()
     axes, sizes, flip = {'xz': (['x', 'z'], ['width', 'height'], True), 'yz': (['y', 'z'], ['depth', 'height'], True), 'xy': (['x', 'y'], ['width', 'depth'], False) if current['width'] >= current['depth'] else (['y', 'x'], ['depth', 'width'], False)}[plane]
     scale = ((right - left) / current[sizes[0]] + (bottom - top) / current[sizes[1]]) / 2
