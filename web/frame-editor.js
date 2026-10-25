@@ -9,7 +9,8 @@ const PLANES = [
 const meter = value => (value / 4).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 
 export function createFrameEditor({ getState, onChange, onClose }) {
-  const dialog = document.getElementById('frame-editor');
+  const screen = document.getElementById('frame-editor');
+  const wagon = document.getElementById('viewport'), hud = document.querySelector('.hud');
   let frameId = null, selectedId = null, draft = null, drag = null;
   const layers = { x: 0, y: 0, z: 0 }, views = [], inputs = {};
   const frame = () => getState().objects.find(item => item.id === frameId);
@@ -29,6 +30,7 @@ export function createFrameEditor({ getState, onChange, onClose }) {
   }
   for (const plane of PLANES) {
     const article = el('section', 'ortho-view');
+    article.dataset.plane = plane.key;
     article.append(el('h3', '', plane.title));
     const canvas = el('canvas'); canvas.id = `view-${plane.key}`; canvas.tabIndex = 0;
     canvas.setAttribute('aria-label', `${plane.title}: выбери объект и перетащи по сетке`);
@@ -46,7 +48,7 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     canvas.addEventListener('pointerup', event => endDrag(event, view));
     canvas.addEventListener('pointercancel', () => { draft = null; drag = null; drawAll(); });
     canvas.addEventListener('lostpointercapture', () => { if (drag) { draft = null; drag = null; drawAll(); } });
-    new ResizeObserver(() => { if (dialog.open) drawAll(); }).observe(canvas);
+    new ResizeObserver(() => { if (!screen.hidden) drawAll(); }).observe(canvas);
   }
   function syncLayers(item) {
     if (item) for (const axis of ['x', 'y', 'z']) layers[axis] = item[axis];
@@ -92,16 +94,22 @@ export function createFrameEditor({ getState, onChange, onClose }) {
   }
   function changed() { onChange(); refresh(); }
   function drawAll() {
-    if (!dialog.open || !frame()) return;
-    for (const view of views) drawView(view);
+    if (screen.hidden || !frame()) return;
+    const bounds = localSize(frame());
+    // One pixel/voxel scale keeps X aligned in the left column and Z in the bottom row.
+    const scale = Math.max(0.1, Math.min(...views.flatMap(view => {
+      const area = view.canvas.getBoundingClientRect();
+      return [(area.width - 44) / bounds[view.sizes[0]], (area.height - 44) / bounds[view.sizes[1]]];
+    })));
+    for (const view of views) drawView(view, scale);
   }
-  function drawView(view) {
+  function drawView(view, scale) {
     const current = frame(), bounds = localSize(current), area = view.canvas.getBoundingClientRect();
     const dpr = Math.min(devicePixelRatio || 1, 2), ctx = view.canvas.getContext('2d');
     const w = area.width, h = area.height;
     view.canvas.width = Math.round(w * dpr); view.canvas.height = Math.round(h * dpr);
     view.width = bounds[view.sizes[0]]; view.height = bounds[view.sizes[1]];
-    view.scale = Math.max(0.1, Math.min((w - 44) / view.width, (h - 44) / view.height));
+    view.scale = scale;
     view.ox = (w - view.width * view.scale) / 2;
     view.oy = (h - view.height * view.scale) / 2;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -222,20 +230,33 @@ export function createFrameEditor({ getState, onChange, onClose }) {
       message(error || 'Габариты и крепление каркаса обновлены', !!error);
     } catch (error) { message(error.message, true); }
   };
-  const close = () => { draft = null; drag = null; dialog.close(); onClose(); };
+  function cancelDrag() {
+    const previous = drag;
+    draft = null; drag = null;
+    if (previous?.view.canvas.hasPointerCapture(previous.pointerId)) previous.view.canvas.releasePointerCapture(previous.pointerId);
+  }
+  const close = () => {
+    cancelDrag(); screen.hidden = true; wagon.hidden = false; hud.hidden = false;
+    document.body.dataset.screen = 'wagon'; onClose();
+  };
   document.getElementById('close-frame-editor').onclick = close;
-  dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
-  dialog.addEventListener('keydown', event => {
+  screen.addEventListener('keydown', event => {
     // Numeric fields use native text editing; shortcuts never move the player.
-    if (event.key === 'Escape' && drag) { event.preventDefault(); event.stopPropagation(); drag = null; draft = null; drawAll(); message('Перемещение отменено'); }
+    if (event.key !== 'Escape') return;
+    event.preventDefault(); event.stopPropagation();
+    if (drag) { cancelDrag(); drawAll(); message('Перемещение отменено'); }
+    else close();
   });
   return {
-    get isOpen() { return dialog.open; },
+    get isOpen() { return !screen.hidden; },
     open(id) {
       if (!getState().objects.some(item => item.id === id && item.type === 'frame')) return;
       frameId = id; selectedId = null; draft = null; drag = null;
       layers.x = layers.y = layers.z = 0;
-      dialog.showModal(); refresh(true); message('Координаты оборудования локальны каркасу. Перетаскивай в любом из трёх видов.');
+      wagon.hidden = true; hud.hidden = true; screen.hidden = false;
+      document.body.dataset.screen = 'editor';
+      refresh(true); message('Координаты оборудования локальны каркасу. Перетаскивай в любом из трёх видов.');
+      document.getElementById('close-frame-editor').focus({ preventScroll: true });
     },
     close
   };

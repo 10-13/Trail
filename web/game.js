@@ -194,6 +194,7 @@ $('rotate-ghost').onclick = rotate;
 $('delete-object').onclick = deleteSelected;
 $('cancel-build').onclick = cancel;
 $('save').onclick = save;
+$('save-editor').onclick = save;
 $('load').onclick = load;
 $('grid-toggle').onclick = () => {
   showGrid = !showGrid;
@@ -365,7 +366,8 @@ function frame(time) {
   const beforeX = state.player.x, beforeY = state.player.y;
   while (accumulator >= 1 / 60) { movePlayer(state, dx, dy, 1 / 60); accumulator -= 1 / 60; }
   if (beforeX !== state.player.x || beforeY !== state.player.y) { markDirty(); updatePlacement(); }
-  render(); requestAnimationFrame(frame);
+  if (!frameEditor.isOpen) render();
+  requestAnimationFrame(frame);
 }
 new ResizeObserver(resize).observe(canvas);
 try { const saved = localStorage.getItem(STORAGE_KEY); if (saved) restore(saved, 'Загружено из браузера'); }

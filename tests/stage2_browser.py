@@ -1,5 +1,7 @@
 """Stage 2 acceptance: real UI, all three drag planes, volume checks and persistence."""
 import json
+from io import BytesIO
+from PIL import Image
 from playwright.sync_api import sync_playwright, expect
 
 with sync_playwright() as p:
@@ -28,13 +30,38 @@ with sync_playwright() as p:
     def current_frame(): return snapshot()['objects'][-1]
     def current_item(): return current_frame()['children'][0]
 
+    def check_editor_layout(target):
+        expect(target.locator('#viewport')).to_be_hidden()
+        expect(target.locator('.hud')).to_be_hidden()
+        assert target.locator('#frame-editor').bounding_box() == {'x': 0, 'y': 0, 'width': target.viewport_size['width'], 'height': target.viewport_size['height']}
+        xy = target.locator('[data-plane="xy"]').bounding_box()
+        xz = target.locator('[data-plane="xz"]').bounding_box()
+        yz = target.locator('[data-plane="yz"]').bounding_box()
+        assert abs(xy['x'] - xz['x']) < 1 and xy['y'] + xy['height'] <= xz['y']
+        assert abs(xz['y'] - yz['y']) < 1 and xz['x'] + xz['width'] <= yz['x']
+        # Inspect the actual gold frame outlines to verify shared scale and alignment.
+        outlines = {}
+        for plane in ['xy', 'xz', 'yz']:
+            canvas = target.locator(f'#view-{plane}')
+            image = Image.open(BytesIO(canvas.screenshot())).convert('RGB')
+            points = [(x, y) for y in range(image.height) for x in range(image.width)
+                      if (lambda r, g, b: r > 85 and g > 65 and r > g > b)(*image.getpixel((x, y)))]
+            assert points, f'No frame outline in {plane}'
+            box = canvas.bounding_box()
+            outlines[plane] = [min(x for x, y in points) + box['x'], max(x for x, y in points) + box['x'], min(y for x, y in points) + box['y'], max(y for x, y in points) + box['y']]
+        assert abs(outlines['xy'][0] - outlines['xz'][0]) <= 1 and abs(outlines['xy'][1] - outlines['xz'][1]) <= 1, outlines
+        assert abs(outlines['xz'][2] - outlines['yz'][2]) <= 1 and abs(outlines['xz'][3] - outlines['yz'][3]) <= 1, outlines
+
     def drag(plane, delta0, delta1):
         current = current_frame(); item = current['children'][0]
         definition = {'xy': (['x', 'y'], ['width', 'depth'], False), 'xz': (['x', 'z'], ['width', 'height'], True), 'yz': (['y', 'z'], ['depth', 'height'], True)}
         axes, sizes, flip = definition[plane]
         box = page.locator(f'#view-{plane}').bounding_box()
         width, height = current[sizes[0]], current[sizes[1]]
-        scale = min((box['width'] - 44) / width, (box['height'] - 44) / height)
+        all_sizes = {'xy': ['width', 'depth'], 'xz': ['width', 'height'], 'yz': ['depth', 'height']}
+        scale = min(limit for key, size_keys in all_sizes.items()
+                    for bounds in [page.locator(f'#view-{key}').bounding_box()]
+                    for limit in [(bounds['width'] - 44) / current[size_keys[0]], (bounds['height'] - 44) / current[size_keys[1]]])
         ox, oy = (box['width'] - width * scale) / 2, (box['height'] - height * scale) / 2
         item_size = {'width': item['depth'] if item['rotation'] % 2 else item['width'], 'depth': item['width'] if item['rotation'] % 2 else item['depth'], 'height': item['height']}
         x = item[axes[0]] + item_size[sizes[0]] / 2
@@ -56,11 +83,20 @@ with sync_playwright() as p:
     page.keyboard.press('Escape'); page.locator('#edit-frame').click()
     expect(page.locator('#frame-editor')).to_be_visible()
     for plane in ['xy', 'xz', 'yz']: expect(page.locator(f'#view-{plane}')).to_be_visible()
+    check_editor_layout(page)
+    page.locator('#save-editor').click()
+    before_return = snapshot()
+    page.keyboard.press('Escape')
+    expect(page.locator('#frame-editor')).to_be_hidden()
+    expect(page.locator('#viewport')).to_be_visible()
+    expect(page.locator('.hud')).to_be_visible()
+    assert snapshot() == before_return
+    page.keyboard.press('e')
+    expect(page.locator('#frame-editor')).to_be_visible()
     assert page.evaluate('''() => {
       const group = document.querySelector('#editor-views').getBoundingClientRect();
-      return [...document.querySelectorAll('.ortho-view')].every(node => node.getBoundingClientRect().bottom <= group.bottom + 1)
-        && document.querySelector('.view-help').getBoundingClientRect().top >= group.bottom;
-    }'''), 'Projection controls must not overlap the text and properties below them'
+      return [...document.querySelectorAll('.ortho-view')].every(node => node.getBoundingClientRect().bottom <= group.bottom + 1);
+    }'''), 'Projection controls must fit in the editor workspace'
     before_player = snapshot()['player']
     page.keyboard.down('w'); page.wait_for_timeout(150); page.keyboard.up('w')
     assert snapshot()['player'] == before_player
@@ -100,6 +136,7 @@ with sync_playwright() as p:
     page.locator('#edit-frame-height').fill('2.25')
     page.locator('#frame-form button[type=submit]').click()
     assert current_frame()['height'] == 9
+    check_editor_layout(page)
     # Selecting from the list moves all slices to the chosen depth.
     page.locator('[data-item-id="item-1"]').click()
     assert page.locator('#slice-xy').input_value() == '4'
@@ -152,6 +189,7 @@ with sync_playwright() as p:
     phone.goto('http://127.0.0.1:4173'); phone.wait_for_selector('.catalog-card', state='attached')
     click_world(10, 3, phone); phone.locator('#edit-frame').tap()
     for plane in ['xy', 'xz', 'yz']: expect(phone.locator(f'#view-{plane}')).to_be_visible()
+    check_editor_layout(phone)
     assert phone.evaluate('''() => {
       const group = document.querySelector('#editor-views').getBoundingClientRect();
       return [...document.querySelectorAll('.ortho-view')].every(node => node.getBoundingClientRect().bottom <= group.bottom + 1);

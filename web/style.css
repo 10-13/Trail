@@ -98,10 +98,10 @@ summary { cursor: pointer; color: var(--accent); margin-bottom: 8px; }
 .touch-pad button:nth-child(3) { grid-column: 2; grid-row: 2; }
 .touch-pad button:nth-child(4) { grid-column: 3; grid-row: 2; }
 /* The three projections are one stateful editor, composed from independent views. */
-#frame-editor { width: min(1400px, calc(100vw - 24px)); height: min(680px, calc(100dvh - 24px)); max-width: none; max-height: none; padding: 0; color: var(--text); border: 1px solid #6a7a83; background: var(--surface); }
-#frame-editor::backdrop { background: #07131bb0; }
+#frame-editor { position: fixed; inset: 0; width: 100%; height: 100dvh; padding: 0; color: var(--text); background: var(--surface); }
 .editor-shell { height: 100%; display: flex; flex-direction: column; min-height: 0; }
 .editor-header { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: var(--raised); border-bottom: 1px solid var(--line); gap: 8px; }
+.editor-header h2 { flex: 1; }
 .frame-form { padding: 8px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; border-bottom: 1px solid var(--line); }
 #frame-size-fields { display: flex; gap: 12px; }
 #frame-size-fields .field-label { flex-basis: auto; }
@@ -115,18 +115,23 @@ summary { cursor: pointer; color: var(--accent); margin-bottom: 8px; }
 .item-row { display: flex; align-items: center; width: 100%; text-align: left; gap: 6px; padding: 3px 4px; }
 .item-row small { margin-left: auto; }
 .item-swatch { display: block; width: 7px; height: 12px; flex-shrink: 0; }
-.editor-workspace { min-width: 0; padding: 8px; overflow: auto; }
-.editor-views { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); gap: 8px; height: clamp(200px, 34vh, 300px); }
+.editor-workspace { min-width: 0; min-height: 0; padding: 8px; overflow: hidden; display: flex; }
+.editor-views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); grid-template-areas: 'xy properties' 'xz yz'; gap: 8px; flex: 1; min-width: 0; min-height: 0; }
+.ortho-view[data-plane=xy] { grid-area: xy; }
+.ortho-view[data-plane=xz] { grid-area: xz; }
+.ortho-view[data-plane=yz] { grid-area: yz; }
+.editor-properties { grid-area: properties; overflow: auto; min-width: 0; min-height: 0; padding: 8px; border: 1px solid var(--line); }
 .ortho-view { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--line); }
 .ortho-view h3 { padding: 4px; background: var(--raised); }
 .ortho-view canvas { display: block; width: 100%; height: 0; min-height: 0; flex: 1 1 0; touch-action: none; cursor: crosshair; }
 .slice-control { padding: 4px; display: flex; flex-direction: column; flex-shrink: 0; gap: 4px; }
 .slice-control span { color: var(--muted); }
 .view-help { margin: 8px 0 16px; }
-#item-fields { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+#item-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 #item-fields .field { display: block; }
 #item-fields .field-label { display: block; }
 #editor-message { min-height: 32px; padding: 8px; border-top: 1px solid var(--line); flex-shrink: 0; }
+body[data-screen=editor] .toast { top: auto; bottom: 40px; }
 @media (pointer: coarse) {
   button { min-height: 30px; }
   .touch-pad { display: grid; }
@@ -152,20 +157,22 @@ summary { cursor: pointer; color: var(--accent); margin-bottom: 8px; }
   .control-hints { font-size: 9px; }
   .scale { bottom: 94px; }
   .mode-switch kbd { display: none; }
-  .editor-body { display: block; }
-  .equipment-panel { border-right: 0; border-bottom: 1px solid var(--line); }
+  .editor-body { display: flex; flex-direction: column; overflow: hidden; }
+  .equipment-panel { border-right: 0; border-bottom: 1px solid var(--line); flex-shrink: 0; max-height: 130px; }
   .equipment-panel .tool-row { margin-top: 4px; }
   .item-list { flex-direction: row; flex-wrap: wrap; max-height: 80px; overflow: auto; }
   .item-row { width: auto; }
   .item-row small { display: none; }
-  .editor-views { height: 210px; gap: 4px; }
+  .editor-workspace { flex: 1; padding: 4px; }
+  .editor-views { gap: 4px; }
+  #item-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+  .editor-properties { padding: 4px; }
   .ortho-view h3 { padding: 2px; font-size: 10px; }
   .slice-control { padding: 2px; font-size: 10px; }
   .frame-form { gap: 4px; }
   #frame-size-fields { gap: 6px; }
   #frame-size-fields input { width: 50px; }
   #frame-size-fields .field { gap: 3px; }
-  #frame-editor { width: calc(100vw - 8px); height: calc(100dvh - 8px); }
 }
 @media (max-height: 500px) and (orientation: landscape) {
   .location-detail, .metrics, .control-hints { display: none; }
