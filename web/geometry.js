@@ -16,8 +16,40 @@ export function localSize(object) {
   return Object.fromEntries(['width', 'depth', 'height'].map(key => [key, Object.hasOwn(object, key) ? object[key] : type[key]]));
 }
 export function dimensions(object) {
-  const size = localSize(object);
-  return object.rotation % 2 ? { width: size.depth, depth: size.width, height: size.height } : size;
+  const size = Object.values(localSize(object)), result = [];
+  orientationOf(object).forEach((axis, i) => { result[Math.abs(axis) - 1] = size[i]; });
+  return { width: result[0], depth: result[1], height: result[2] };
+}
+// Signed permutation: each local axis maps to one oriented parent axis.
+export function orientationOf(object) {
+  return object?.orientation || [[1,2,3], [2,-1,3], [-1,-2,3], [-2,1,3]][object?.rotation || 0];
+}
+export function validOrientation(value) {
+  if (!Array.isArray(value) || value.length !== 3 || !value.every(Number.isInteger) || new Set(value.map(Math.abs)).size !== 3 || value.some(v => Math.abs(v) < 1 || Math.abs(v) > 3)) return false;
+  const inversions = value.reduce((sum, a, i) => sum + value.slice(i + 1).filter(b => Math.abs(a) > Math.abs(b)).length, 0);
+  return (-1) ** inversions * value.reduce((sign, a) => sign * Math.sign(a), 1) === 1;
+}
+export function inverseOrientation(object) {
+  const result = []; orientationOf(object).forEach((axis, i) => { result[Math.abs(axis) - 1] = Math.sign(axis) * (i + 1); }); return result;
+}
+export function transformCell(cell, size, object) {
+  const input = [cell.x, cell.y, cell.z], lengths = [size.width, size.depth, size.height], result = [];
+  orientationOf(object).forEach((axis, i) => { result[Math.abs(axis) - 1] = axis > 0 ? input[i] : lengths[i] - 1 - input[i]; });
+  return { x: result[0], y: result[1], z: result[2] };
+}
+export function rotateObject(object, axis = 'z') {
+  const turns = { x: [1,3,-2], y: [-3,2,1], z: [2,-1,3] }[axis];
+  const orientation = orientationOf(object).map(v => Math.sign(v) * turns[Math.abs(v) - 1]);
+  const legacy = [[1,2,3], [2,-1,3], [-1,-2,3], [-2,1,3]].findIndex(o => o.every((v, i) => v === orientation[i]));
+  const result = { ...object, rotation: legacy < 0 ? 0 : legacy };
+  if (legacy < 0) result.orientation = orientation; else delete result.orientation;
+  return result;
+}
+export function transformBox(frame, item) {
+  const box = dimensions(item), corners = [];
+  for (const x of [item.x, item.x + box.width - 1]) for (const y of [item.y, item.y + box.depth - 1]) for (const z of [item.z, item.z + box.height - 1]) corners.push(transformCell({ x, y, z }, localSize(frame), frame));
+  const parent = orientationOf(frame), orientation = orientationOf(item).map(v => Math.sign(v) * parent[Math.abs(v) - 1]);
+  return { ...item, x: frame.x + Math.min(...corners.map(c => c.x)), y: frame.y + Math.min(...corners.map(c => c.y)), z: frame.z + Math.min(...corners.map(c => c.z)), rotation: !frame.orientation && !item.orientation ? (frame.rotation + item.rotation) % 4 : 0, orientation };
 }
 export function intersects(a, b) {
   const ad = dimensions(a), bd = dimensions(b);

@@ -178,3 +178,10 @@ body[data-screen=editor] .toast { top: auto; bottom: 32px; }
 .pipe-inspector { margin-top: 8px; }
 .inspector { max-height: min(50vh,450px); overflow: auto; }
 @media(max-width:700px) { .save-tools { flex-wrap: wrap; justify-content: flex-end; } #world-network { top: 160px; max-width: 240px; } .network-links { max-height: 130px; } }
+.rotation-tools { margin: 6px 0; align-items: center; }
+.rotation-tools label { display: flex; align-items: center; gap: 4px; }
+.rotation-tools select { width: auto; }
+.nearby-connections { margin: 8px 0; }
+.nearby-connections .field { display: block; }
+.nearby-connections .field-label { display: block; }
+.nearby-connections select { width: 100%; min-width: 0; }

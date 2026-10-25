@@ -1,7 +1,8 @@
-import { EQUIPMENT, dimensions, localSize, equipmentPlacementError, putEquipment, removeEquipment, updateFrame, updatePorts, putPipe, pipePlacementError, paintPipeRoute, removePipe, findPipe, updatePipeFaces } from './core.js';
+import { EQUIPMENT, dimensions, localSize, equipmentPlacementError, putEquipment, removeEquipment, updateFrame, updatePorts, putPipe, pipePlacementError, paintPipeRoute, removePipe, findPipe, updatePipeFaces, connectEndpoints } from './core.js';
+import { rotateObject } from './geometry.js';
 import { el, numberField, readVoxels } from './ui.js';
-import { worldPorts, rotateFace, pipesInFrame } from './logistics.js';
-import { createPipePalette, createPortsEditor, createPipeInspector, createNetworkPanel, drawProjectedPipe, drawProjectedPort } from './network-ui.js';
+import { rotateFace, pipesInFrame, localFace, portsInFrame, neighboringConnections, worldPipe, DIRECTIONS, openPipeEnds, localCell } from './logistics.js';
+import { createRotationControl, createPipePalette, createPortsEditor, createPipeInspector, createNetworkPanel, drawProjectedPipe, drawProjectedPort } from './network-ui.js';
 
 const PLANES = [
   { key: 'xz', title: 'Вдоль поезда', axes: ['x', 'z'], depth: 'y', sizes: ['width', 'height'], flip: true },
@@ -28,12 +29,41 @@ export function createFrameEditor({ getState, onChange, onClose }) {
   });
   const pipeInspector = createPipeInspector($('editor-pipe-inspector'), {
     getPipe: () => !brush && !erase && selectedPipeId ? pipesInFrame(getState(), frame()).find(pipe => pipe.id === selectedPipeId) : null,
-    apply: faces => { const found = findPipe(getState(), selectedPipeId); const owner = found?.frameId ? getState().objects.find(item => item.id === found.frameId) : null; return updatePipeFaces(getState(), selectedPipeId, faces.map(face => rotateFace(rotateFace(face, frame().rotation), (4 - (owner?.rotation || 0)) % 4))); }, changed, message
+    apply: faces => { const found = findPipe(getState(), selectedPipeId); const owner = found?.frameId ? getState().objects.find(item => item.id === found.frameId) : null; return updatePipeFaces(getState(), selectedPipeId, faces.map(face => localFace(owner, rotateFace(face, frame())))); }, changed, message
   });
+  let nearby = [], ownConnections = [];
+  const neighborDetails=el('details','nearby-connections'), neighborSummary=el('summary'), neighborBody=el('div','network-links');
+  const ownSelect=el('select'), neighborSelect=el('select'), connectButton=el('button','','Проложить соединение');
+  ownSelect.setAttribute('aria-label','Подключение этого каркаса');neighborSelect.setAttribute('aria-label','Соседнее подключение');connectButton.type='button';connectButton.dataset.connectFrames='';
+  const ownLabel=el('label','field'),neighborLabel=el('label','field');ownLabel.append(el('span','field-label','В этом каркасе'),ownSelect);neighborLabel.append(el('span','field-label','Рядом'),neighborSelect);
+  neighborBody.append(ownLabel,neighborLabel,connectButton,el('p','muted','Порты и свободные концы соседних труб отмечены у границ видов. Соединение прокладывается и в промежутке между каркасами.'));
+  neighborDetails.append(neighborSummary,neighborBody);$('neighbor-connections').append(neighborDetails);
+  neighborDetails.ontoggle=()=>drawAll();
+  function focusConnection(){const port=ownConnections.find(p=>p.id===ownSelect.value);if(port)syncLayers(port.cell);drawAll();}
+  ownSelect.onchange=neighborSelect.onchange=focusConnection;
+  connectButton.onclick=()=>{
+    const first=ownConnections.find(p=>p.id===ownSelect.value),second=nearby.find(p=>p.id===neighborSelect.value);
+    if(!first||!second)return;
+    const error=connectEndpoints(getState(),toWorldEndpoint(first),toWorldEndpoint(second));
+    if(!error){changed();message('Каркасы соединены. Труба проходит через промежуток между ними.');}else message(error,true);
+  };
+  function toWorldEndpoint(point){return {...point,cell:worldPipe(frame(),{...point.cell,faces:[]}),neighbor:worldPipe(frame(),{...point.neighbor,faces:[]}),face:rotateFace(point.face,frame())};}
+  function refreshNearby(){
+    nearby=neighboringConnections(getState(),frame());ownConnections=portsInFrame(getState(),frame()).filter(p=>p.frameId===frameId);
+    const bounds=localSize(frame());
+    ownConnections.push(...openPipeEnds(getState()).map(p=>({...p,cell:localCell(frame(),p.cell),neighbor:localCell(frame(),p.neighbor),face:localFace(frame(),p.face)})).filter(p=>p.cell.x>=0&&p.cell.y>=0&&p.cell.z>=0&&p.cell.x<bounds.width&&p.cell.y<bounds.depth&&p.cell.z<bounds.height));
+    neighborSummary.textContent=`Рядом: ${nearby.length} подключений`;
+    const fill=(select,points,isOwn)=>{
+      const old=select.value;select.replaceChildren();
+      for(const [i,p]of points.entries()){const option=el('option','',`${isOwn?'':`${i+1}. `}${p.label} · ${p.kind==='pipe'?'труба':p.kind==='input'?'вход':'выход'} · ${meter(p.cell.z)} м${p.attached?' · подключён':''}`);option.value=p.id;select.append(option);}
+      if(points.some(p=>p.id===old))select.value=old;else if(isOwn&&points.some(p=>p.kind==='output'))select.value=points.find(p=>p.kind==='output').id;
+    };fill(ownSelect,ownConnections,true);fill(neighborSelect,nearby,false);connectButton.disabled=!nearby.length||!ownConnections.length;
+  }
+  const rotationAxis = createRotationControl($('editor-rotation'), rotate);
   const networkPanel = createNetworkPanel($('editor-network'), { getState, onHighlight: ids => { highlightedPipes = ids; drawAll(); } });
   createPipePalette($('editor-pipe-palette'), config => {
     brush = { ...config, x: 0, y: 0, z: 0, rotation: 0 }; erase = false; selectedId = null; selectedPipeId = null; movingId = null; menuOpen = false; draft = null; pipeAnchor = null;
-    refresh(); message('Начни у порта или на конце трубы и веди маршрут. Высота задаётся линиями срезов.');
+    neighborDetails.open=true; refresh(); message('Начни у порта или на конце трубы и веди маршрут. Высота задаётся линиями срезов.');
     (pointerView?.canvas || views[0].canvas).focus({ preventScroll: true });
   });
   for (const [key, label, value, max] of [['width', 'Длина, м', 1.5, 12], ['depth', 'Ширина, м', 1, 3], ['height', 'Высота, м', 2, 2.5]]) {
@@ -73,7 +103,7 @@ export function createFrameEditor({ getState, onChange, onClose }) {
       $('edit-frame-mount').value = current.mount;
     }
     $('frame-clearance').textContent = current.mount === 'ceiling'
-      ? `Низ ${meter(current.z)} м · ${current.z >= 8 ? 'проход свободен' : 'проход перекрыт'}` : `Напольный · высота ${meter(size.height)} м`;
+      ? `Низ ${meter(current.z)} м · ${current.z >= 8 ? 'проход свободен' : 'проход перекрыт'}` : `Напольный · высота ${meter(dimensions(current).height)} м`;
     for (const axis of ['x', 'y', 'z']) layers[axis] = Math.max(0, Math.min(layers[axis], size[SIZE_KEY[axis]] - 1));
     // Keep the top view under the larger elevation, aligned to its long dimension.
     const wide = size.width >= size.depth, top = views.find(view => view.key === 'xy');
@@ -88,13 +118,13 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     if (item) {
       $('item-title').textContent = EQUIPMENT[item.type].name;
       for (const [key, input] of Object.entries(inputs)) input.value = item[key] / 4;
-      $('item-rotation').textContent = `${item.rotation * 90}°`;
+      $('item-rotation').textContent = '';
     }
     $('editor-menu').hidden = !menuOpen;
     $('editor-menu-button').setAttribute('aria-expanded', menuOpen);
     $('editor-erase').classList.toggle('active', erase);
     $('editor-erase').setAttribute('aria-pressed', erase);
-    portsEditor.refresh(); pipeInspector.refresh(); networkPanel.refresh();
+    refreshNearby(); portsEditor.refresh(); pipeInspector.refresh(); networkPanel.refresh();
     drawAll();
   }
   function changed() { onChange(); refresh(); }
@@ -151,10 +181,18 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     const objects = [...frame().children].sort((a, b) => Number(a.id === selectedId) - Number(b.id === selectedId));
     for (const item of objects) drawItem(ctx, view, item, false);
     for (const pipe of pipesInFrame(getState(), frame())) drawProjectedPipe(ctx, pipe, view, { alpha: inSlice(view, { ...pipe, type: 'pipe', rotation: 0 }) ? 1 : .18, highlight: highlightedPipes.has(pipe.id) || selectedPipeId === pipe.id });
-    const localPorts = worldPorts({ objects: [{ ...frame(), x: 0, y: 0, z: 0, rotation: 0 }] });
+    const localPorts = portsInFrame(getState(), frame()).filter(port => port.frameId === frameId);
     for (const port of localPorts) {
       ctx.save(); ctx.globalAlpha = port.cell[view.depth] === layers[view.depth] ? 1 : .18;
       drawProjectedPort(ctx, port, view, getState().graph.ports.find(p => p.id === port.id)?.attached); ctx.restore();
+    }
+    if(neighborDetails.open || brush?.type==='pipe') for(const [index,port]of nearby.entries()){
+      const cell={...port.cell};
+      for(const [i,axis]of view.axes.entries())cell[axis]=Math.max(-.5-DIRECTIONS[port.face][{x:0,y:1,z:2}[axis]]/2,Math.min(cell[axis],(i===0?view.width:view.height)-.5-DIRECTIONS[port.face][{x:0,y:1,z:2}[axis]]/2));
+      ctx.save();ctx.globalAlpha=port.id===neighborSelect.value?1:.4;
+      drawProjectedPort(ctx,{...port,cell},view,port.attached);
+      const x=view.ox+(cell[view.axes[0]]+.5)*scale,y=view.oy+(view.flip?view.height-cell[view.axes[1]]-.5:cell[view.axes[1]]+.5)*scale;
+      ctx.fillStyle='#d7e1df';ctx.font='10px monospace';ctx.fillText(String(index+1),x+5,y-5);ctx.restore();
     }
     if (draft) drawItem(ctx, view, draft, true);
     for (let index = 0; index < 2; index++) drawSlice(ctx, view, index);
@@ -296,10 +334,16 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     if (view.canvas.hasPointerCapture(event.pointerId)) view.canvas.releasePointerCapture(event.pointerId);
   }
   function rotate() {
-    if (brush?.type === 'pipe') { brush.faces = brush.faces.map(face => rotateFace(face, 1)); if (pointerView && pointerPoint) updateDraft(pointerView, pointerPoint); refresh(); return; }
-    if (brush) { brush.rotation = (brush.rotation + 1) % 4; if (pointerView && pointerPoint) updateDraft(pointerView, pointerPoint); refresh(); return; }
+    const axis=rotationAxis();
+    if (brush?.type === 'pipe') { brush.faces = brush.faces.map(face => rotateFace(face,rotateObject({rotation:0},axis))); if (pointerView && pointerPoint) updateDraft(pointerView, pointerPoint); refresh(); return; }
+    if (brush) { brush = rotateObject(brush,axis); if (pointerView && pointerPoint) updateDraft(pointerView, pointerPoint); refresh(); return; }
+    if(selectedPipeId){
+      const found=findPipe(getState(),selectedPipeId),owner=found?.frameId?getState().objects.find(o=>o.id===found.frameId):null;
+      const faces=found.pipe.faces.map(face=>localFace(owner,rotateFace(rotateFace(localFace(frame(),rotateFace(face,owner)),rotateObject({rotation:0},axis)),frame())));
+      const error=updatePipeFaces(getState(),selectedPipeId,faces);if(!error)changed();message(error||'Труба повёрнута',!!error);return;
+    }
     const item = selected(); if (!item) return;
-    const error = putEquipment(getState(), frameId, { ...item, rotation: (item.rotation + 1) % 4 }, selectedId);
+    const error = putEquipment(getState(), frameId, rotateObject(item,axis), selectedId);
     if (!error) changed(); message(error || 'Поворот применён', !!error);
   }
   function moveSelected() {
@@ -358,6 +402,7 @@ export function createFrameEditor({ getState, onChange, onClose }) {
     open(id) {
       if (!getState().objects.some(item => item.id === id && item.type === 'frame')) return;
       frameId = id; selectedId = null; selectedPipeId = null; pipeAnchor = null; brush = null; erase = false; movingId = null; menuOpen = false; draft = null; drag = null; stroke = null; pointerView = null; pointerPoint = null;
+      neighborDetails.open=false; ownSelect.replaceChildren(); neighborSelect.replaceChildren();
       layers.x = layers.y = layers.z = 0;
       const size = localSize(frame());
       for (const [key, input] of Object.entries(brushInputs)) { input.max = size[key] / 4; input.value = Math.min(2, size[key]) / 4; }

@@ -43,9 +43,9 @@
 
     <section id="inspector" class="inspector panel" aria-label="Выбранный объект" hidden>
       <div class="selection-summary"><div class="inspector-icon" id="selection-icon">↟</div><div class="selection-description"><div class="section-label" id="selection-label">ОБЪЕКТ</div><h2 id="selection-title"></h2><p id="selection-detail"></p></div></div>
-      <div id="object-actions" class="object-actions" hidden><button id="edit-frame" hidden>Открыть каркас <kbd>E</kbd></button><button id="move-object">↔ Переместить <kbd>M</kbd></button><button id="rotate-object">↻ Повернуть <kbd>R</kbd></button><button id="delete-object" class="danger">Удалять <kbd>⌫</kbd></button></div>
-      <div id="build-actions" class="object-actions" hidden><button id="rotate-ghost">↻ Повернуть <kbd>R</kbd></button><button id="cancel-build">Отменить <kbd>Esc</kbd></button></div>
-      <div id="world-ports"></div><div id="world-pipe-inspector"></div>
+      <div id="object-actions" class="object-actions" hidden><button id="edit-frame" hidden>Открыть каркас <kbd>E</kbd></button><button id="move-object">↔ Переместить <kbd>M</kbd></button><button id="rotate-object" hidden>↻ Повернуть <kbd>R</kbd></button><button id="delete-object" class="danger">Удалять <kbd>⌫</kbd></button></div>
+      <div id="build-actions" class="object-actions" hidden><button id="rotate-ghost" hidden>↻ Повернуть <kbd>R</kbd></button><button id="cancel-build">Отменить <kbd>Esc</kbd></button></div>
+      <div id="world-rotation"></div><div id="world-ports"></div><div id="world-pipe-inspector"></div>
     </section>
     <div id="world-network"></div>
 
@@ -68,8 +68,8 @@
         <section class="editor-properties" aria-label="Свойства выбранного блока">
     <div class="editor-tools panel" aria-label="Инструменты редактора"><button id="close-frame-editor">← В вагон</button><button id="editor-menu-button" aria-expanded="false" aria-controls="editor-menu">Блоки <kbd>Tab</kbd></button><button id="editor-erase" aria-pressed="false">Удаление <kbd>⌫</kbd></button><button id="save-editor" class="save-button">Сохранить</button></div>
 
-          <p id="item-empty" class="muted">Tab — выбрать блок. Backspace — удалять по клику. Линии на видах задают срезы: перетаскивай их за ручки.</p>
-          <form id="item-form" hidden><h3 id="item-title"></h3><div id="item-fields"></div><div class="tool-row"><button type="submit">Применить</button><button id="item-rotate" type="button">Повернуть <span id="item-rotation"></span></button><button id="item-move" type="button">Перенести</button><button id="item-delete" type="button" class="danger">Кисть удаления</button></div></form>
+          <div id="editor-rotation"></div><div id="neighbor-connections"></div><p id="item-empty" class="muted">Tab — выбрать блок. Backspace — удалять по клику. Линии на видах задают срезы: перетаскивай их за ручки.</p>
+          <form id="item-form" hidden><h3 id="item-title"></h3><div id="item-fields"></div><div class="tool-row"><button type="submit">Применить</button><button id="item-rotate" hidden type="button">Повернуть <span id="item-rotation"></span></button><button id="item-move" type="button">Перенести</button><button id="item-delete" type="button" class="danger">Кисть удаления</button></div></form>
           <div id="item-ports"></div><div id="editor-pipe-inspector"></div><div id="editor-network"></div>
         </section>
       </div>

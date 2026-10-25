@@ -1,10 +1,11 @@
-import { WAGON, PLAYER, TYPES, EQUIPMENT, localSize, dimensions, intersects } from './geometry.js';
+import { WAGON, PLAYER, TYPES, EQUIPMENT, localSize, dimensions, intersects, validOrientation, transformBox } from './geometry.js';
 export { WAGON, PLAYER, TYPES, EQUIPMENT, localSize, dimensions, intersects } from './geometry.js';
-import { portsError, canonicalPorts, networkError, rebuildGraph, canonicalPipe, pipeScope, pipeShapeError, allPipes, pipeHitsPlayer, cellKey, sameCell, routeCells, autoPortFaces, DIRECTIONS, OPPOSITE, worldPipe, rotateFace } from './logistics.js';
+import { portsError, canonicalPorts, networkError, rebuildGraph, canonicalPipe, pipeScope, pipeShapeError, allPipes, pipeHitsPlayer, cellKey, sameCell, routeCells, autoPortFaces, DIRECTIONS, OPPOSITE, worldPipe, rotateFace, localFace, adjacent, worldPorts } from './logistics.js';
 export { rebuildGraph } from './logistics.js';
 function boxError(object, definitions) {
   if (!object || !Object.hasOwn(definitions, object.type)) return 'Неизвестный тип объекта';
   if (![object.x, object.y, object.z, object.rotation].every(Number.isInteger) || object.rotation < 0 || object.rotation > 3) return 'Объект должен быть привязан к сетке';
+  if (object.orientation !== undefined && !validOrientation(object.orientation)) return 'Некорректный поворот объекта';
   const size = localSize(object);
   if (!Object.values(size).every(value => Number.isInteger(value) && value > 0)) return 'Размеры должны быть положительными и кратными 0,25 м';
   if (object.type !== 'frame') { const error = portsError(object); if (error) return error; }
@@ -50,7 +51,7 @@ export function placementError(state, object, ignoreId = null, checkPlayer = tru
     if (contents) return contents;
   } else {
     if (object.z !== 0) return 'Свободное сооружение должно стоять на полу';
-    if (Object.keys(size).some(key => size[key] !== dimensions({ type: object.type, rotation: object.rotation })[key])) return 'Размеры свободного сооружения заданы его типом';
+    if (Object.keys(size).some(key => size[key] !== dimensions({ type: object.type, rotation: object.rotation, orientation: object.orientation })[key])) return 'Размеры свободного сооружения заданы его типом';
   }
   if (object.x < 0 || object.y < 0 || object.z < 0 || object.x + size.width > WAGON.width || object.y + size.depth > WAGON.depth || object.z + size.height > WAGON.height) return 'За границами вагона';
   const other = state.objects.find(item => item.id !== ignoreId && intersects(object, item));
@@ -63,6 +64,7 @@ export function placementError(state, object, ignoreId = null, checkPlayer = tru
 }
 function canonicalObject(object) {
   const result = { id: object.id, type: object.type, x: object.x, y: object.y, z: object.z, rotation: object.rotation };
+  if (object.orientation) result.orientation = [...object.orientation];
   if (object.type === 'frame' || Object.hasOwn(EQUIPMENT, object.type)) Object.assign(result, localSize(object));
   if (object.type === 'frame') Object.assign(result, { mount: object.mount || 'floor', nextItemId: object.nextItemId ?? 1, children: (object.children || []).map(canonicalObject), pipes: (object.pipes || []).map(canonicalPipe) });
   else Object.assign(result, { ports: canonicalPorts(object), nextPortId: object.nextPortId ?? 3 });
@@ -91,7 +93,7 @@ export function updateFrame(state, id, settings) {
   const frame = state.objects.find(item => item.id === id && item.type === 'frame');
   if (!frame) return 'Каркас не найден';
   const object = { ...frame, ...settings };
-  object.z = object.mount === 'ceiling' ? WAGON.height - object.height : 0;
+  object.z = object.mount === 'ceiling' ? WAGON.height - dimensions(object).height : 0;
   return putObject(state, object, id);
 }
 export function putEquipment(state, frameId, candidate, movingId = null) {
@@ -140,33 +142,43 @@ export function putPipe(state, candidate, frameId = null) {
 }
 export function paintPipeRoute(state, frameId, from, to, preview = false) {
   if (![to?.x, to?.y, to?.z, ...(from ? [from.x, from.y, from.z] : [])].every(Number.isInteger)) return 'Маршрут должен быть привязан к сетке';
-  const limit = frameId ? localSize(state.objects.find(item => item.id === frameId) || { type: 'pipe' }) : WAGON;
-  if ([from, to].filter(Boolean).some(cell => cell.x < 0 || cell.y < 0 || cell.z < 0 || cell.x >= limit.width || cell.y >= limit.depth || cell.z >= limit.height)) return 'Маршрут выходит за границы';
+  return paintPipeCells(state, frameId, routeCells(from, to), preview, to.faces);
+}
+function paintPipeCells(state, frameId, cells, preview = false, heading = ['nx','px']) {
   const future = structuredClone(state), pipes = pipeScope(future, frameId); if (!pipes) return 'Каркас не найден';
-  const parent = frameId ? future.objects.find(item => item.id === frameId) : null;
-  const cells = routeCells(from, to), worldMap = new Map(allPipes(future).map(pipe => [cellKey(pipe), pipe]));
-  const refs = new Map();
+  const parent = frameId ? future.objects.find(item => item.id === frameId) : null, limit = parent ? localSize(parent) : WAGON;
+  if (cells.some(c => c.x < 0 || c.y < 0 || c.z < 0 || c.x >= limit.width || c.y >= limit.depth || c.z >= limit.height)) return 'Маршрут выходит за границы';
+  const worldMap = new Map(allPipes(future).map(pipe => [cellKey(pipe), pipe])), ports = worldPorts(future), refs = new Map();
+  const solids = future.objects.flatMap(o => o.type==='frame' ? o.children.map(item=>transformBox(o,item)) : [o]);
+  if(cells.some(cell=>solids.some(o=>{const w=worldPipe(parent,{...cell,faces:[]}),d=dimensions(o);return w.x>=o.x&&w.y>=o.y&&w.z>=o.z&&w.x<o.x+d.width&&w.y<o.y+d.depth&&w.z<o.z+d.height;})))return 'Труба пересекается с оборудованием или сооружением';
+  const readFaces = ref => ref.raw.faces.map(face => localFace(parent, rotateFace(face, ref.owner)));
+  const writeFaces = (ref, faces) => { ref.raw.faces = faces.map(face => localFace(ref.owner, rotateFace(face, parent))); };
   for (const cell of cells) {
-    const existing = worldMap.get(cellKey(worldPipe(parent, { ...cell, faces: [] })));
+    const world = worldPipe(parent, { ...cell, faces: [] }), existing = worldMap.get(cellKey(world));
     if (existing) {
       const owner = existing.frameId ? future.objects.find(item => item.id === existing.frameId) : null;
-      const raw = (owner ? owner.pipes : future.pipes).find(pipe => pipe.id === existing.id);
-      refs.set(cellKey(cell), { raw, owner });
+      refs.set(cellKey(cell), { raw: (owner ? owner.pipes : future.pipes).find(pipe => pipe.id === existing.id), owner, existing });
     } else {
       const pipe = { ...cell, id: `pipe-${future.nextPipeId++}`, faces: [] }; pipes.push(pipe); refs.set(cellKey(cell), { raw: pipe, owner: parent });
     }
   }
-  const readFaces = ref => ref.raw.faces.map(face => rotateFace(rotateFace(face, ref.owner?.rotation || 0), (4 - (parent?.rotation || 0)) % 4));
-  const writeFaces = (ref, faces) => { ref.raw.faces = [...faces].map(face => rotateFace(rotateFace(face, parent?.rotation || 0), (4 - (ref.owner?.rotation || 0)) % 4)); };
+  const direction = (a,b) => Object.keys(DIRECTIONS).find(face => sameCell(adjacent(a,face), b));
   for (let index = 0; index < cells.length; index++) {
-    const ref = refs.get(cellKey(cells[index]));
-    const faces = new Set([...readFaces(ref), ...autoPortFaces(future, cells[index], frameId)]);
-    if (index > 0) {
-      const previous = refs.get(cellKey(cells[index - 1])), previousCell = cells[index - 1];
-      const face = Object.keys(DIRECTIONS).find(face => { const vector = DIRECTIONS[face]; return cells[index].x - previousCell.x === vector[0] && cells[index].y - previousCell.y === vector[1] && cells[index].z - previousCell.z === vector[2]; });
-      writeFaces(previous, new Set([...readFaces(previous), face])); faces.add(OPPOSITE[face]);
-    }
-    writeFaces(ref, faces);
+    const cell = cells[index], ref = refs.get(cellKey(cell)), existing = ref.existing;
+    // Preserve physically attached faces; a dangling terminal face may turn as the stroke continues.
+    const attached = existing ? existing.faces.filter(face => {
+      const neighbor = adjacent(existing, face), pipe = worldMap.get(cellKey(neighbor));
+      return pipe?.faces.includes(OPPOSITE[face]) || ports.some(port => sameCell(port.cell, neighbor) && port.face === OPPOSITE[face]);
+    }).map(face => localFace(parent, face)) : [];
+    const faces = new Set([...attached, ...autoPortFaces(future, cell, frameId)]);
+    if (index > 0) faces.add(direction(cell, cells[index-1]));
+    if (index+1 < cells.length) faces.add(direction(cell, cells[index+1]));
+    if (faces.size > 2) return 'Ответвление запрещено: труба соединяет только два направления';
+    let result = [...faces];
+    if (!result.length) result = existing ? readFaces(ref) : heading?.length === 2 ? [...heading] : ['nx','px'];
+    if (result.length === 1) result.push(OPPOSITE[result[0]]);
+    if (autoPortFaces(future,cell,frameId).length && result[0] !== OPPOSITE[result[1]]) return 'У порта труба должна заканчиваться прямым участком';
+    writeFaces(ref, result);
   }
   const error = networkError(future); if (error) return error;
   if (!preview) {
@@ -175,6 +187,38 @@ export function paintPipeRoute(state, frameId, from, to, preview = false) {
     state.nextPipeId = future.nextPipeId; rebuildGraph(state);
   }
   return '';
+}
+// Join two visible connection points, including the gap outside both frames.
+// Endpoints have an outward face; the first and last cells stay straight.
+export function connectEndpoints(state, first, second, preview = false) {
+  if (!first || !second || first.id === second.id) return 'Выбери два разных подключения';
+  if (first.kind !== 'pipe' && second.kind !== 'pipe' && first.kind === second.kind) return 'Соедини выход со входом';
+  const start = first.neighbor, end = second.neighbor;
+  const lead = adjacent(start, first.face), tail = adjacent(end, second.face);
+  const solids = state.objects.flatMap(o => o.type === 'frame' ? o.children.map(item => transformBox(o,item)) : [o]);
+  const occupied = new Set(allPipes(state).map(cellKey));
+  const free = c => c.x >= 0 && c.y >= 0 && c.z >= 0 && c.x < WAGON.width && c.y < WAGON.depth && c.z < WAGON.height && !solids.some(o => {
+    const d=dimensions(o); return c.x>=o.x && c.y>=o.y && c.z>=o.z && c.x<o.x+d.width && c.y<o.y+d.depth && c.z<o.z+d.height;
+  }) && !pipeHitsPlayer(c,state.player) && (!occupied.has(cellKey(c)) || sameCell(c,start) || sameCell(c,end));
+  if (!free(start) || !free(end)) return 'Подключение занято оборудованием, трубой или персонажем';
+  let cells;
+  if (sameCell(start,end)) {
+    if (first.face !== OPPOSITE[second.face]) return 'Недостаточно места для прямого подключения';
+    cells = [start];
+  } else if (sameCell(adjacent(start,first.face),end) && first.face === OPPOSITE[second.face]) cells = [start,end];
+  else {
+    if (!free(lead) || !free(tail) || sameCell(lead,end) || sameCell(tail,start)) return 'Для прямых концов нужно свободное место перед подключениями';
+    const queue=[lead], previous=new Map([[cellKey(lead),null]]);
+    for(let cursor=0;cursor<queue.length && !previous.has(cellKey(tail));cursor++) for(const face of Object.keys(DIRECTIONS)) {
+      const next=adjacent(queue[cursor],face),key=cellKey(next);
+      if(previous.has(key)||sameCell(next,start)||sameCell(next,end)||!free(next)) continue;
+      previous.set(key,queue[cursor]);queue.push(next);
+    }
+    if(!previous.has(cellKey(tail))) return 'Нет свободного пути между подключениями';
+    cells=[];for(let c=tail;c;c=previous.get(cellKey(c)))cells.push(c);cells.reverse();cells=[start,...cells,end];
+  }
+  const error=paintPipeCells(state,null,cells,preview,[OPPOSITE[first.face],first.face]);
+  return error;
 }
 export function removePipe(state, id) {
   state.pipes = state.pipes.filter(pipe => pipe.id !== id);
@@ -196,15 +240,7 @@ export function updatePipeFaces(state, id, faces) {
   found.pipe.faces = [...faces]; rebuildGraph(state); return '';
 }
 // Convert a local child box to wagon coordinates, including the parent's rotation.
-export function worldEquipment(frame, item) {
-  const size = localSize(frame), box = dimensions(item);
-  const positions = [
-    [item.x, item.y], [size.depth - item.y - box.depth, item.x],
-    [size.width - item.x - box.width, size.depth - item.y - box.depth], [item.y, size.width - item.x - box.width]
-  ];
-  const [x, y] = positions[frame.rotation];
-  return { ...item, x: frame.x + x, y: frame.y + y, z: frame.z + item.z, rotation: (frame.rotation + item.rotation) % 4 };
-}
+export function worldEquipment(frame, item) { return transformBox(frame, item); }
 export function removeObject(state, id) { state.objects = state.objects.filter(item => item.id !== id); rebuildGraph(state); }
 export function canStand(state, player) {
   return Number.isFinite(player.x) && Number.isFinite(player.y) && player.x >= PLAYER.radius && player.x <= WAGON.width - PLAYER.radius && player.y >= PLAYER.radius && player.y <= WAGON.depth - PLAYER.radius && !state.objects.some(object => hitsPlayer(object, player)) && !allPipes(state).some(pipe => pipeHitsPlayer(pipe, player));
@@ -234,7 +270,17 @@ export function deserialize(text) {
   if (!data.wagon || Object.keys(WAGON).some(key => data.wagon[key] !== WAGON[key])) throw new Error('Сохранение предназначено для другого вагона');
   if (!Array.isArray(data.objects) || data.objects.length > 5760) throw new Error('Некорректный список объектов');
   if (!Number.isSafeInteger(data.nextId) || data.nextId < 1) throw new Error('Некорректный счётчик объектов');
+  let migratedPipes = 0;
+  function migratePipes(pipes) {
+    if (!Array.isArray(pipes)) return;
+    for (const pipe of pipes) if (pipe && Array.isArray(pipe.faces) && pipe.faces.length !== 2 && pipe.faces.length <= 6 && new Set(pipe.faces).size === pipe.faces.length && pipe.faces.every(f => Object.hasOwn(DIRECTIONS,f))) {
+      const first = pipe.faces.find(f => pipe.faces.includes(OPPOSITE[f])) || pipe.faces[0] || 'nx';
+      pipe.faces = [first, pipe.faces.includes(OPPOSITE[first]) || pipe.faces.length < 2 ? OPPOSITE[first] : pipe.faces.find(f => f !== first)]; migratedPipes++;
+    }
+  }
+  migratePipes(data.pipes); for (const object of data.objects) if (object?.type === 'frame') migratePipes(object.pipes);
   const result = createState(false), ids = new Set();
+  if (migratedPipes) result.migrationNotice = `Старые трубы обновлены: ${migratedPipes}. Ответвления убраны — проверь соединения.`;
   result.nextPipeId = data.nextPipeId ?? 1;
   if (data.pipes !== undefined && !Array.isArray(data.pipes)) throw new Error('Некорректный список труб');
   for (const item of data.objects) {

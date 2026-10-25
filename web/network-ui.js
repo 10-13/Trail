@@ -1,8 +1,15 @@
 import { el, numberField, readVoxels } from './ui.js';
 import { DIRECTIONS, FACE_NAMES, OPPOSITE, portLimits, portsOf, PIPE_CAPACITY } from './logistics.js';
 
-const SHAPES = { route: [], straight: ['nx','px'], corner: ['nx','py'], tee: ['nx','px','py'], vertical: ['nz','pz'], custom: ['nx','px'] };
-const SHAPE_NAMES = { route: 'Маршрут кистью', straight: 'Прямой участок', corner: 'Поворот', tee: 'Тройник', vertical: 'Вертикальный', custom: 'Свои грани' };
+const SHAPES = { route: ['nx','px'], straight: ['nx','px'], corner: ['nx','py'], vertical: ['nz','pz'], custom: ['nx','px'] };
+const SHAPE_NAMES = { route: 'Маршрут кистью', straight: 'Прямой участок', corner: 'Поворот', vertical: 'Вертикальный', custom: 'Свои грани' };
+export function createRotationControl(host, rotate) {
+  const row=el('div','tool-row rotation-tools'), label=el('label','','Ось '), select=el('select');
+  select.setAttribute('aria-label','Ось вращения'); select.dataset.rotationAxis='';
+  for(const [value,name] of [['z','Z · вертикаль'],['x','X · вдоль'],['y','Y · поперёк']]){const option=el('option','',name);option.value=value;select.append(option);}
+  label.append(select);const button=el('button','','Повернуть · R');button.type='button';button.dataset.rotateActive='';button.onclick=()=>rotate();
+  row.append(label,button);host.append(row);return ()=>select.value;
+}
 export function createPipePalette(host, onChoose) {
   const details = el('details', 'pipe-palette'); details.open = true;
   details.append(el('summary', '', 'Трубы'));
@@ -19,7 +26,7 @@ export function createPipePalette(host, onChoose) {
   details.append(faces);
   const sync=()=>{ const shape=SHAPES[select.value]; faces.hidden=select.value==='route'; for(const [face,input] of Object.entries(checks)) input.checked=shape.includes(face); };
   select.onchange=sync; sync();
-  details.append(el('p','muted','Маршрут соединяет нарисованные подряд ячейки. Для продолжения начни с конца трубы. Пересечение с трубой создаёт общий узел.'));
+  details.append(el('p','muted','Маршрут соединяет нарисованные подряд ячейки. Для продолжения начни с конца трубы. Концы остаются прямыми. Пересечение и третье направление запрещены.'));
   const button=el('button','','Труба · 0,25 м'); button.type='button'; button.dataset.pipeChoose='';
   button.onclick=()=>onChoose({type:'pipe',faces:Object.entries(checks).filter(([,input])=>input.checked).map(([face])=>face),autoRoute:select.value==='route'});
   details.append(button); host.append(details);

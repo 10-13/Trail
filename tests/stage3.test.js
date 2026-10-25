@@ -26,30 +26,29 @@ test('a drawn route connects an output to an input and a removed section breaks 
   assert.equal(state.graph.links.length, 1);
   assert.equal(PIPE_CAPACITY, 4);
 });
-test('adjacent parallel routes stay separate; explicitly drawn junctions connect them', () => {
+test('adjacent parallel routes stay separate and a crossing cannot create a junction', () => {
   const { state, frame } = pair();
   paintPipeRoute(state, frame.id, cell(2), cell(7));
   paintPipeRoute(state, frame.id, cell(2, 3), cell(7, 3));
   const at = (x, y) => frame.pipes.find(p => p.x === x && p.y === y);
   assert.equal(state.graph.edges.some(([a,b]) => a === at(4,2).id && b === at(4,3).id), false);
-  paintPipeRoute(state, frame.id, cell(4,2), cell(4,3));
-  assert.equal(state.graph.edges.some(([a,b]) => a === at(4,2).id && b === at(4,3).id), true);
-  assert.ok(at(4,2).faces.includes('py'));
+  const unchanged=serialize(state);
+  assert.match(paintPipeRoute(state, frame.id, cell(4,2), cell(4,3)), /Ответвление/);
+  assert.equal(serialize(state),unchanged);
+  assert.equal(at(4,2).faces.length,2);
   const before = serialize(state);
   assert.match(putPipe(state, { ...cell(4), faces: ['nx','px'] }, frame.id), /занята/);
   assert.equal(serialize(state), before);
   assert.equal(new Set(allPipes(state).map(cellKey)).size, allPipes(state).length);
 });
-test('a branch reaches both receivers and a loop does not duplicate directed links', () => {
+test('a third direction is refused without changing the existing connection', () => {
   const { state, frame } = pair();
   putEquipment(state, frame.id, machine({ x: 4, y: 4 }));
   paintPipeRoute(state, frame.id, cell(2), cell(7));
-  assert.equal(paintPipeRoute(state, frame.id, cell(3,2), cell(3,5)), '');
-  assert.equal(state.graph.links.length, 2);
-  assert.equal(paintPipeRoute(state, frame.id, cell(3,3), cell(6,3)), '');
-  assert.equal(paintPipeRoute(state, frame.id, cell(6,3), cell(6,2)), '');
-  assert.equal(state.graph.links.length, 2);
-  assert.equal(new Set(state.graph.links.map(link => link.id)).size, 2);
+  const before=serialize(state);
+  assert.match(paintPipeRoute(state, frame.id, cell(3,2), cell(3,5)), /Ответвление/);
+  assert.equal(state.graph.links.length,1);assert.equal(serialize(state),before);
+  assert.match(putPipe(state,{...cell(3,3),faces:['nx','px','py']},frame.id),/две грани/);
 });
 test('an explicit shared junction can join local and world pipes without duplicating a cell', () => {
   const { state, frame } = pair();
@@ -99,7 +98,7 @@ test('pipes occupy free cells inside a hollow frame, but cannot overlap equipmen
   assert.match(putPipe(state, { ...cell(0,1,0), faces: ['nx','px'] }, frame.id), /оборудованием/);
   assert.equal(putPipe(state, { x: 15, y: 5, z: 4, faces: ['nx','px'] }), '');
   assert.match(putEquipment(state, frame.id, machine({ x: 4, y: 4, z: 4 })), /оборудованием/);
-  assert.match(putPipe(state, { x: 14, y: 5, z: 4, faces: [] }), /занята/);
+  assert.match(putPipe(state, { x: 14, y: 5, z: 4, faces: ['nx','px'] }), /занята/);
   const before = serialize(state);
   assert.match(updateFrame(state, frame.id, { height: 4 }), /границы/);
   assert.equal(serialize(state), before);

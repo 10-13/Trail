@@ -1,4 +1,4 @@
-import { WAGON, PLAYER, dimensions, localSize } from './geometry.js';
+import { WAGON, PLAYER, dimensions, localSize, orientationOf, transformCell, inverseOrientation, transformBox } from './geometry.js';
 
 export const PIPE_CAPACITY = 4;
 export const DIRECTIONS = Object.freeze({ nx: [-1, 0, 0], px: [1, 0, 0], ny: [0, -1, 0], py: [0, 1, 0], nz: [0, 0, -1], pz: [0, 0, 1] });
@@ -8,13 +8,19 @@ export const cellKey = cell => `${cell.x},${cell.y},${cell.z}`;
 export const sameCell = (a, b) => a.x === b.x && a.y === b.y && a.z === b.z;
 export const adjacent = (cell, face) => { const [x, y, z] = DIRECTIONS[face]; return { x: cell.x + x, y: cell.y + y, z: cell.z + z }; };
 export function rotateFace(face, rotation) {
-  const ring = ['px', 'py', 'nx', 'ny'];
-  return face === 'nz' || face === 'pz' ? face : ring[(ring.indexOf(face) + rotation) % 4];
+  const object = typeof rotation === 'number' ? { rotation } : rotation;
+  const vector = DIRECTIONS[face], index = vector.findIndex(v => v !== 0);
+  const axis = orientationOf(object)[index] * vector[index];
+  return `${axis < 0 ? 'n' : 'p'}${'xyz'[Math.abs(axis) - 1]}`;
 }
 export function rotateCell(cell, size, rotation) {
-  const positions = [[cell.x, cell.y], [size.depth - 1 - cell.y, cell.x], [size.width - 1 - cell.x, size.depth - 1 - cell.y], [cell.y, size.width - 1 - cell.x]];
-  return { x: positions[rotation][0], y: positions[rotation][1], z: cell.z };
+  return transformCell(cell, size, typeof rotation === 'number' ? { rotation } : rotation);
 }
+export function localCell(frame, world) {
+  if (!frame) return { x: world.x, y: world.y, z: world.z };
+  return transformCell({ x: world.x-frame.x, y: world.y-frame.y, z: world.z-frame.z }, dimensions(frame), { orientation: inverseOrientation(frame) });
+}
+export function localFace(frame, face) { return frame ? rotateFace(face, { orientation: inverseOrientation(frame) }) : face; }
 export function defaultPorts(object) {
   const size = localSize(object);
   return [
@@ -52,15 +58,15 @@ export function portCell(object, port) {
     : port.face === 'ny' || port.face === 'py'
       ? { x: port.u, y: port.face === 'ny' ? 0 : size.depth - 1, z: port.v }
       : { x: port.u, y: port.v, z: port.face === 'nz' ? 0 : size.height - 1 };
-  const rotated = rotateCell(base, size, object.rotation);
+  const rotated = rotateCell(base, size, object);
   return { x: object.x + rotated.x, y: object.y + rotated.y, z: object.z + rotated.z };
 }
 export function worldPorts(state) {
   const result = [];
   function add(object, frame = null) {
     for (const port of portsOf(object)) {
-      let cell = portCell(object, port), face = rotateFace(port.face, object.rotation);
-      if (frame) { cell = rotateCell(cell, localSize(frame), frame.rotation); cell = { x: cell.x + frame.x, y: cell.y + frame.y, z: cell.z + frame.z }; face = rotateFace(face, frame.rotation); }
+      let cell = portCell(object, port), face = rotateFace(port.face, object);
+      if (frame) { cell = rotateCell(cell, localSize(frame), frame); cell = { x: cell.x + frame.x, y: cell.y + frame.y, z: cell.z + frame.z }; face = rotateFace(face, frame); }
       const owner = frame ? `${frame.id}/${object.id}` : object.id;
       result.push({ ...port, id: `${owner}/${port.id}`, portId: port.id, owner, objectId: object.id, frameId: frame?.id || null, cell, face, neighbor: adjacent(cell, face), label: frame ? `Каркас ${frame.id.slice(7)} / ${object.type === 'machine' ? 'модуль' : 'ёмкость'} ${object.id.slice(5)}` : `${object.type === 'storage' ? 'Ящик' : 'Верстак'} ${object.id.slice(7)}` });
     }
@@ -70,18 +76,33 @@ export function worldPorts(state) {
 }
 export function worldPipe(frame, pipe) {
   if (!frame) return { ...pipe, frameId: null };
-  const cell = rotateCell(pipe, localSize(frame), frame.rotation);
-  return { ...pipe, x: frame.x + cell.x, y: frame.y + cell.y, z: frame.z + cell.z, faces: pipe.faces.map(face => rotateFace(face, frame.rotation)), frameId: frame.id };
+  const cell = rotateCell(pipe, localSize(frame), frame);
+  return { ...pipe, x: frame.x + cell.x, y: frame.y + cell.y, z: frame.z + cell.z, faces: pipe.faces.map(face => rotateFace(face, frame)), frameId: frame.id };
 }
 export function allPipes(state) {
   return [...(state.pipes || []).map(pipe => worldPipe(null, pipe)), ...state.objects.filter(object => object.type === 'frame').flatMap(frame => (frame.pipes || []).map(pipe => worldPipe(frame, pipe)))];
 }
 export function pipesInFrame(state, frame) {
-  const bounds = localSize(frame), worldSize = dimensions(frame), inverse = (4 - frame.rotation) % 4;
-  return allPipes(state).map(pipe => {
-    const cell = rotateCell({ x: pipe.x - frame.x, y: pipe.y - frame.y, z: pipe.z - frame.z }, worldSize, inverse);
-    return { ...pipe, ...cell, faces: pipe.faces.map(face => rotateFace(face, inverse)) };
-  }).filter(pipe => pipe.x >= 0 && pipe.y >= 0 && pipe.z >= 0 && pipe.x < bounds.width && pipe.y < bounds.depth && pipe.z < bounds.height);
+  const bounds = localSize(frame);
+  return allPipes(state).map(pipe => ({ ...pipe, ...localCell(frame, pipe), faces: pipe.faces.map(face => localFace(frame, face)) }))
+    .filter(pipe => pipe.x >= 0 && pipe.y >= 0 && pipe.z >= 0 && pipe.x < bounds.width && pipe.y < bounds.depth && pipe.z < bounds.height);
+}
+export function portsInFrame(state, frame) {
+  return worldPorts(state).map(port => ({ ...port, attached: state.graph?.ports.find(p=>p.id===port.id)?.attached, cell: localCell(frame, port.cell), neighbor: localCell(frame, port.neighbor), face: localFace(frame, port.face) }));
+}
+// Boundary entry points from nearby ports and unconnected pipe ends.
+export function neighboringConnections(state, frame) {
+  const bounds = localSize(frame), distance = c => ['x','y','z'].reduce((sum, axis, i) => sum + Math.max(0, -c[axis], c[axis] - Object.values(bounds)[i] + 1), 0);
+  const ports = portsInFrame(state, frame).filter(p => p.frameId !== frame.id && distance(p.neighbor) <= 24);
+  const ends = openPipeEnds(state).filter(p=>p.frameId!==frame.id).map(p=>({...p,cell:localCell(frame,p.cell),neighbor:localCell(frame,p.neighbor),face:localFace(frame,p.face)})).filter(p=>distance(p.neighbor)<=24 && !(p.cell.x>=0&&p.cell.y>=0&&p.cell.z>=0&&p.cell.x<bounds.width&&p.cell.y<bounds.depth&&p.cell.z<bounds.height));
+  return [...ports, ...ends].sort((a,b) => distance(a.neighbor)-distance(b.neighbor));
+}
+export function openPipeEnds(state) {
+  const occupied = new Map(allPipes(state).map(p => [cellKey(p), p]));
+  return allPipes(state).flatMap(pipe => pipe.faces.filter(face => {
+    const cell = adjacent(pipe, face), next = occupied.get(cellKey(cell));
+    return !next?.faces.includes(OPPOSITE[face]) && !state.graph.ports.some(port => sameCell(port.cell, cell) && port.face === OPPOSITE[face]);
+  }).map(face => ({ id: `${pipe.id}/${face}`, pipeId: pipe.id, frameId: pipe.frameId, kind: 'pipe', label: pipe.frameId ? `Каркас ${pipe.frameId.slice(7)} · конец трубы` : 'Внешняя труба', cell: {x:pipe.x,y:pipe.y,z:pipe.z}, face, neighbor: adjacent(pipe, face) })));
 }
 export function pipeScope(state, frameId) {
   return frameId ? state.objects.find(item => item.id === frameId && item.type === 'frame')?.pipes : state.pipes;
@@ -89,17 +110,12 @@ export function pipeScope(state, frameId) {
 export function canonicalPipe(pipe) { return { id: pipe.id, x: pipe.x, y: pipe.y, z: pipe.z, faces: [...pipe.faces] }; }
 export function pipeShapeError(pipe) {
   if (!pipe || ![pipe.x, pipe.y, pipe.z].every(Number.isInteger)) return 'Труба должна быть привязана к объёмной сетке';
-  if (!Array.isArray(pipe.faces) || pipe.faces.length > 6 || new Set(pipe.faces).size !== pipe.faces.length || pipe.faces.some(face => !Object.hasOwn(DIRECTIONS, face))) return 'Некорректные открытые грани трубы';
+  if (!Array.isArray(pipe.faces) || pipe.faces.length !== 2 || new Set(pipe.faces).size !== pipe.faces.length || pipe.faces.some(face => !Object.hasOwn(DIRECTIONS, face))) return 'Труба соединяет ровно две грани; ответвления запрещены';
   return '';
 }
 function inside(cell, object) {
   const size = dimensions(object);
   return cell.x >= object.x && cell.x < object.x + size.width && cell.y >= object.y && cell.y < object.y + size.depth && cell.z >= object.z && cell.z < object.z + size.height;
-}
-function childWorld(frame, item) {
-  const size = localSize(frame), box = dimensions(item);
-  const positions = [[item.x, item.y], [size.depth - item.y - box.depth, item.x], [size.width - item.x - box.width, size.depth - item.y - box.depth], [item.y, size.width - item.x - box.width]];
-  return { ...item, x: frame.x + positions[frame.rotation][0], y: frame.y + positions[frame.rotation][1], z: frame.z + item.z, rotation: (frame.rotation + item.rotation) % 4 };
 }
 export function pipeHitsPlayer(pipe, player) {
   if (pipe.z >= PLAYER.height) return false;
@@ -110,7 +126,7 @@ export function networkError(state, checkPlayer = true) {
   if (state.pipes !== undefined && !Array.isArray(state.pipes)) return 'Некорректный список труб';
   const next = state.nextPipeId ?? 1, ids = new Set(), occupied = new Set();
   if (!Number.isSafeInteger(next) || next < 1) return 'Некорректный счётчик труб';
-  const solids = state.objects.flatMap(object => object.type === 'frame' ? (object.children || []).map(item => childWorld(object, item)) : [object]);
+  const solids = state.objects.flatMap(object => object.type === 'frame' ? (object.children || []).map(item => transformBox(object, item)) : [object]);
   const groups = [{ frame: null, pipes: state.pipes || [] }, ...state.objects.filter(o => o.type === 'frame').map(frame => ({ frame, pipes: frame.pipes === undefined ? [] : frame.pipes }))];
   let count = 0;
   for (const group of groups) {
@@ -170,6 +186,6 @@ export function routeCells(from, to) {
 export function autoPortFaces(state, cell, frameId = null) {
   const frame = frameId ? state.objects.find(o => o.id === frameId) : null, world = worldPipe(frame, { ...cell, faces: [] });
   return worldPorts(state).filter(port => sameCell(port.neighbor, world)).map(port => {
-    const face = OPPOSITE[port.face]; return frame ? rotateFace(face, (4 - frame.rotation) % 4) : face;
+    const face = OPPOSITE[port.face]; return localFace(frame, face);
   });
 }

@@ -1,8 +1,9 @@
 import { WAGON, PLAYER, TYPES, EQUIPMENT, dimensions, worldEquipment, createState, placementError, putObject, removeObject, movePlayer, serialize, deserialize, pipePlacementError, putPipe, paintPipeRoute, removePipe, findPipe, updatePipeFaces, updatePorts } from './core.js';
+import { rotateObject } from './geometry.js';
 import { createFrameEditor } from './frame-editor.js';
 import { numberField, readVoxels } from './ui.js';
-import { allPipes, rotateFace, sameCell } from './logistics.js';
-import { createPipePalette, createPortsEditor, createPipeInspector, createNetworkPanel, drawProjectedPipe, drawProjectedPort } from './network-ui.js';
+import { allPipes, rotateFace, sameCell, localFace } from './logistics.js';
+import { createRotationControl, createPipePalette, createPortsEditor, createPipeInspector, createNetworkPanel, drawProjectedPipe, drawProjectedPort } from './network-ui.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('game'), ctx = canvas.getContext('2d');
@@ -33,14 +34,15 @@ frameFields.height.oninput = newFrameClearance;
 $('frame-mount').onchange = () => { if ($('frame-mount').value === 'ceiling') frameFields.height.value = '0.5'; newFrameClearance(); };
 newFrameClearance();
 const frameEditor = createFrameEditor({ getState: () => state, onChange: () => { markDirty(); updateUI(); }, onClose: () => { keys.clear(); updateUI(); canvas.focus({ preventScroll: true }); } });
+const rotationAxis = createRotationControl($('world-rotation'), rotate);
 const networkPanel = createNetworkPanel($('world-network'), { getState: () => state, onHighlight: ids => { highlightedPipes = ids; } });
 const portsEditor = createPortsEditor($('world-ports'), {
   getObject: () => !ghost && !erase && selected()?.type !== 'frame' ? selected() : null,
   apply: (ports, next) => updatePorts(state, null, selectedId, ports, next), changed: () => { markDirty(); updateUI(); }, message: toast
 });
 const pipeInspector = createPipeInspector($('world-pipe-inspector'), {
-  getPipe: () => { const found = selectedPipeId && !ghost && !erase ? findPipe(state, selectedPipeId) : null; const parent = found?.frameId ? state.objects.find(item => item.id === found.frameId) : null; return found ? { ...found.pipe, faces: found.pipe.faces.map(face => rotateFace(face, parent?.rotation || 0)), worldZ: allPipes(state).find(pipe => pipe.id === selectedPipeId)?.z } : null; },
-  apply: faces => { const found = findPipe(state, selectedPipeId); const parent = found?.frameId ? state.objects.find(item => item.id === found.frameId) : null; return updatePipeFaces(state, selectedPipeId, faces.map(face => rotateFace(face, (4 - (parent?.rotation || 0)) % 4))); }, changed: () => { markDirty(); updateUI(); }, message: toast
+  getPipe: () => { const found = selectedPipeId && !ghost && !erase ? findPipe(state, selectedPipeId) : null; const parent = found?.frameId ? state.objects.find(item => item.id === found.frameId) : null; return found ? { ...found.pipe, faces: found.pipe.faces.map(face => rotateFace(face, parent)), worldZ: allPipes(state).find(pipe => pipe.id === selectedPipeId)?.z } : null; },
+  apply: faces => { const found = findPipe(state, selectedPipeId); const parent = found?.frameId ? state.objects.find(item => item.id === found.frameId) : null; return updatePipeFaces(state, selectedPipeId, faces.map(face => localFace(parent, face))); }, changed: () => { markDirty(); updateUI(); }, message: toast
 });
 createPipePalette($('world-pipe-palette'), config => {
   try { ghost = { ...config, x: 26, y: 5, z: readVoxels($('pipe-height')), rotation: 0 }; }
@@ -87,7 +89,7 @@ function updateUI() {
   $('selection-icon').style.color = definition?.color || '#93d7cf';
   $('selection-label').textContent = ghost ? movingId ? 'ПЕРЕМЕЩЕНИЕ · ЛКМ ДЛЯ УСТАНОВКИ' : 'СТРОИТЕЛЬСТВО · ЛКМ ДЛЯ УСТАНОВКИ' : object ? object.type === 'frame' ? object.mount === 'ceiling' ? 'ПОТОЛОЧНЫЙ КАРКАС' : 'НАПОЛЬНЫЙ КАРКАС' : definition.category.toUpperCase() : '';
   $('selection-title').textContent = definition?.name || (selectedPipeId ? 'Труба' : 'Осмотрись внутри');
-  $('selection-detail').textContent = object ? `${objectSize(object)} · ${ghost ? 'выбери свободное место на сетке' : `вдоль ${meters(object.x)} м · поперёк ${meters(object.y)} м · поворот ${object.rotation * 90}°`}` : 'Передвигайся по вагону и выбирай место для строительства.';
+  $('selection-detail').textContent = object ? `${objectSize(object)} · ${ghost ? 'выбери свободное место на сетке' : `вдоль ${meters(object.x)} м · поперёк ${meters(object.y)} м`}` : 'Передвигайся по вагону и выбирай место для строительства.';
   if (object?.type === 'frame') $('selection-detail').textContent += ` · низ ${meters(object.z)} м${object.mount === 'ceiling' ? object.z >= PLAYER.height ? ' · проход свободен' : ' · проход перекрыт' : ''} · объектов внутри: ${object.children?.length || 0}`;
   $('object-count').textContent = String(state.objects.length).padStart(2, '0');
   const occupied = new Set();
@@ -157,14 +159,20 @@ function startMove() {
   updateUI();
 }
 function rotate() {
-  if (ghost?.type === 'pipe') { ghost.faces = ghost.faces.map(face => rotateFace(face, 1)); updateUI(); return; }
-  if (ghost) { ghost.rotation = (ghost.rotation + 1) % 4; snapGhost(); updateUI(); return; }
-  const object = selected();
-  if (!object) return;
-  const error = putObject(state, { ...object, rotation: (object.rotation + 1) % 4 }, object.id);
-  if (error) toast(error, true);
-  else { markDirty(); updateUI(); }
+  const axis=rotationAxis();
+  if (ghost?.type === 'pipe') { ghost.faces = ghost.faces.map(face => rotateFace(face, rotateObject({rotation:0},axis))); updateUI(); return; }
+  if (ghost) { ghost = rotateObject(ghost,axis); if(ghost.type==='frame') ghost.z=ghost.mount==='ceiling'?WAGON.height-dimensions(ghost).height:0; snapGhost(); updateUI(); return; }
+  if(selectedPipeId){
+    const found=findPipe(state,selectedPipeId),parent=found?.frameId?state.objects.find(o=>o.id===found.frameId):null;
+    const faces=found.pipe.faces.map(face=>localFace(parent,rotateFace(rotateFace(face,parent),rotateObject({rotation:0},axis))));
+    const error=updatePipeFaces(state,selectedPipeId,faces);if(error)toast(error,true);else{markDirty();updateUI();}return;
+  }
+  const object = selected(); if (!object) return;
+  const candidate=rotateObject(object,axis);if(candidate.type==='frame')candidate.z=candidate.mount==='ceiling'?WAGON.height-dimensions(candidate).height:0;
+  const error=putObject(state,candidate,object.id);
+  if(error)toast(error,true);else{markDirty();updateUI();}
 }
+
 function save() {
   try {
     localStorage.setItem(STORAGE_KEY, serialize(state));
@@ -183,7 +191,7 @@ function load() {
   try {
     const text = localStorage.getItem(STORAGE_KEY);
     if (!text) { toast('Сохранения ещё нет — сначала нажми «Сохранить»', true); return; }
-    restore(text, 'Загружено из браузера'); toast('Компоновка восстановлена');
+    restore(text, 'Загружено из браузера'); toast(state.migrationNotice || 'Компоновка восстановлена');
   } catch (error) { toast(`Не удалось загрузить: ${error.message}`, true); }
 }
 for (const [type, definition] of Object.entries(TYPES)) {
@@ -229,7 +237,7 @@ $('import-file').onchange = async event => {
   try {
     if (file.size > 1_000_000) throw new Error('Файл слишком большой');
     restore(await file.text(), 'Импортировано · не сохранено');
-    markDirty(); toast('Компоновка импортирована. Нажми «Сохранить», чтобы запомнить её.');
+    markDirty(); toast(state.migrationNotice || 'Компоновка импортирована. Нажми «Сохранить», чтобы запомнить её.');
   } catch (error) { toast(`Импорт отклонён: ${error.message}`, true); }
   event.target.value = '';
 };
@@ -423,4 +431,4 @@ function frame(time) {
 new ResizeObserver(resize).observe(canvas);
 try { const saved = localStorage.getItem(STORAGE_KEY); if (saved) restore(saved, 'Загружено из браузера'); }
 catch { toast('Сохранение недоступно или повреждено. Открыт тестовый вагон.', true); }
-resize(); updateUI(); requestAnimationFrame(frame);
+resize(); updateUI(); if(state.migrationNotice)toast(state.migrationNotice); requestAnimationFrame(frame);
