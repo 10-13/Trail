@@ -66,7 +66,7 @@ test('save round trip preserves objects, orientation, identifiers and player', (
 test('corrupt saves are rejected before they can replace a layout', () => {
   const original = createState();
   for (const mutate of [
-    data => { data.version = 2; },
+    data => { data.version = 99; },
     data => { data.wagon.width = 49; },
     data => { data.objects[0].x = -1; },
     data => { data.objects[1] = { ...data.objects[0] }; },

@@ -16,12 +16,13 @@
   <div class="hud">
     <header class="top-hud">
       <div class="location panel">
-        <div class="brand"><span>╬</span> TRAIL <small>ПРОТОТИП 01</small></div>
+        <div class="brand"><span>╬</span> TRAIL <small>ЭТАП 02</small></div>
         <div class="location-detail">Вагон 001 <span>12 × 3 м</span><span class="stationary">● На стоянке</span></div>
         <div class="metrics"><span>Объекты <b id="object-count">04</b></span><span>Занято <b id="occupancy">0%</b></span><span id="mode-label">ХОДЬБА</span></div>
       </div>
       <div class="save-tools panel" aria-label="Сохранение и настройки">
         <span id="save-state">Нет сохранения</span>
+        <button id="layer-toggle" class="quiet">Слой: все</button>
         <button id="grid-toggle" class="quiet" aria-pressed="true">Сетка <span>0,25 м</span></button>
         <button id="load" class="quiet">Загрузить</button>
         <button id="save" class="save-button">↓ Сохранить</button>
@@ -31,6 +32,7 @@
     <aside id="build-menu" class="build-menu panel" aria-labelledby="build-title" hidden>
       <div class="menu-heading"><div><div class="section-label">МАСТЕРСКАЯ</div><h1 id="build-title">Строительство</h1></div><button id="close-build-menu" class="icon-button" aria-label="Закрыть меню строительства">×</button></div>
       <p class="menu-help">Выбери объект, затем укажи место в вагоне.</p>
+      <details id="frame-options" open><summary>Параметры нового каркаса</summary><div id="frame-config"></div><label class="field"><span class="field-label">Крепление</span><select id="frame-mount"><option value="floor">К полу</option><option value="ceiling">К потолку</option></select></label><p id="new-frame-clearance" class="muted"></p></details>
       <div id="catalog" class="catalog"></div>
       <div class="file-tools"><button id="export" class="text-button">Экспорт JSON ↗</button><button id="import" class="text-button">Импорт JSON ↙</button></div>
       <input id="import-file" type="file" accept=".json,application/json" hidden>
@@ -39,7 +41,7 @@
 
     <section id="inspector" class="inspector panel" aria-label="Выбранный объект" hidden>
       <div class="selection-summary"><div class="inspector-icon" id="selection-icon">↟</div><div class="selection-description"><div class="section-label" id="selection-label">ОБЪЕКТ</div><h2 id="selection-title"></h2><p id="selection-detail"></p></div></div>
-      <div id="object-actions" class="object-actions" hidden><button id="move-object">↔ Переместить <kbd>M</kbd></button><button id="rotate-object">↻ Повернуть <kbd>R</kbd></button><button id="delete-object" class="danger">Удалить <kbd>Del</kbd></button></div>
+      <div id="object-actions" class="object-actions" hidden><button id="edit-frame" hidden>Открыть каркас <kbd>E</kbd></button><button id="move-object">↔ Переместить <kbd>M</kbd></button><button id="rotate-object">↻ Повернуть <kbd>R</kbd></button><button id="delete-object" class="danger">Удалить <kbd>Del</kbd></button></div>
       <div id="build-actions" class="object-actions" hidden><button id="rotate-ghost">↻ Повернуть <kbd>R</kbd></button><button id="cancel-build">Отменить <kbd>Esc</kbd></button></div>
     </section>
 
@@ -56,6 +58,22 @@
       <button data-direction="up" aria-label="Вверх">↑</button><button data-direction="left" aria-label="Влево">←</button><button data-direction="down" aria-label="Вниз">↓</button><button data-direction="right" aria-label="Вправо">→</button>
     </div>
   </div>
+  <dialog id="frame-editor" aria-labelledby="frame-editor-title">
+    <div class="editor-shell">
+      <header class="editor-header"><h2 id="frame-editor-title">Редактор каркаса</h2><button id="close-frame-editor" aria-label="Закрыть редактор каркаса">Закрыть · Esc</button></header>
+      <form id="frame-form" class="frame-form"><div id="frame-size-fields"></div><label class="field"><span class="field-label">Крепление</span><select id="edit-frame-mount"><option value="floor">К полу</option><option value="ceiling">К потолку</option></select></label><button type="submit">Применить к каркасу</button><span id="frame-clearance" class="muted"></span></form>
+      <div class="editor-body">
+        <aside class="equipment-panel"><h3>Оборудование</h3><div class="tool-row"><button id="add-machine" type="button">+ Модуль</button><button id="add-tank" type="button">+ Ёмкость</button></div><div id="item-list" class="item-list"></div></aside>
+        <div class="editor-workspace">
+          <div id="editor-views" class="editor-views"></div>
+          <p class="muted view-help">Локальные оси каркаса · сетка 0,25 м · яркие объекты пересекают активный срез, остальные приглушены. Срез выбирается ползунком.</p>
+          <p id="item-empty" class="muted">Добавь оборудование или выбери объект в списке / на активном срезе.</p>
+          <form id="item-form" hidden><h3 id="item-title"></h3><div id="item-fields"></div><div class="tool-row"><button type="submit">Применить свойства</button><button id="item-rotate" type="button">Повернуть 90° <span id="item-rotation"></span></button><button id="item-delete" type="button" class="danger">Удалить объект</button></div></form>
+        </div>
+      </div>
+      <footer id="editor-message" role="status"></footer>
+    </div>
+  </dialog>
   <div id="toast" class="toast" role="status" hidden></div>
   <script type="module" src="game.js"></script>
 </body>

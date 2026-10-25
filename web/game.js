@@ -1,16 +1,38 @@
-import { WAGON, PLAYER, TYPES, dimensions, createState, placementError, putObject, removeObject, movePlayer, serialize, deserialize } from './core.js';
+import { WAGON, PLAYER, TYPES, EQUIPMENT, dimensions, worldEquipment, createState, placementError, putObject, removeObject, movePlayer, serialize, deserialize } from './core.js';
+import { createFrameEditor } from './frame-editor.js';
+import { numberField, readVoxels } from './ui.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('game'), ctx = canvas.getContext('2d');
 const STORAGE_KEY = 'trail.stage1.layout.v1';
 let state = createState(), mode = 'walk', selectedId = null, ghost = null, movingId = null;
 let buildMenuOpen = false;
+let visibleLayer = 'all';
 let showGrid = true, pointer = null, dirty = false, toastTimer, previousTime = 0;
 let view = { width: 1, height: 1, scale: 1, vertical: false };
 const keys = new Set();
 const meters = voxels => (voxels * WAGON.voxel).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 const objectSize = object => { const size = dimensions(object); return `${meters(size.width)} × ${meters(size.depth)} × ${meters(size.height)} м`; };
 const selected = () => state.objects.find(object => object.id === selectedId);
+const frameFields = {};
+for (const [key, label, value, max] of [['width', 'X, м', 1.5, 12], ['depth', 'Y, м', 1, 3], ['height', 'Z, м', 2, 2.5]]) {
+  const field = numberField(label, `new-frame-${key}`, value, 0.25, max);
+  $('frame-config').append(field.row); frameFields[key] = field.input;
+}
+function newFrameClearance() {
+  const height = frameFields.height.valueAsNumber;
+  $('new-frame-clearance').textContent = $('frame-mount').value === 'ceiling'
+    ? `Низ: ${(2.5 - height).toLocaleString('ru-RU')} м · ${height <= 0.5 ? 'проход свободен' : 'перекрывает проход'}`
+    : 'Напольный каркас перекрывает проход.';
+}
+frameFields.height.oninput = newFrameClearance;
+$('frame-mount').onchange = () => { if ($('frame-mount').value === 'ceiling') frameFields.height.value = '0.5'; newFrameClearance(); };
+newFrameClearance();
+const frameEditor = createFrameEditor({ getState: () => state, onChange: () => { markDirty(); updateUI(); }, onClose: () => { keys.clear(); updateUI(); canvas.focus({ preventScroll: true }); } });
+function editFrame() {
+  if (selected()?.type !== 'frame' || ghost) return;
+  keys.clear(); buildMenuOpen = false; updateUI(); frameEditor.open(selectedId);
+}
 
 function toast(message, error = false) {
   clearTimeout(toastTimer);
@@ -39,14 +61,18 @@ function updateUI() {
   const object = ghost || selected();
   $('inspector').hidden = !object;
   $('object-actions').hidden = !selected() || !!ghost;
+  $('edit-frame').hidden = selected()?.type !== 'frame' || !!ghost;
   $('build-actions').hidden = !ghost;
   $('selection-icon').textContent = object ? TYPES[object.type].icon : '↟';
   $('selection-icon').style.color = object ? TYPES[object.type].color : '#93d7cf';
-  $('selection-label').textContent = ghost ? movingId ? 'ПЕРЕМЕЩЕНИЕ · ЛКМ ДЛЯ УСТАНОВКИ' : 'СТРОИТЕЛЬСТВО · ЛКМ ДЛЯ УСТАНОВКИ' : object ? TYPES[object.type].category.toUpperCase() : 'ПЕРСОНАЖ';
+  $('selection-label').textContent = ghost ? movingId ? 'ПЕРЕМЕЩЕНИЕ · ЛКМ ДЛЯ УСТАНОВКИ' : 'СТРОИТЕЛЬСТВО · ЛКМ ДЛЯ УСТАНОВКИ' : object ? object.type === 'frame' ? object.mount === 'ceiling' ? 'ПОТОЛОЧНЫЙ КАРКАС' : 'НАПОЛЬНЫЙ КАРКАС' : TYPES[object.type].category.toUpperCase() : 'ПЕРСОНАЖ';
   $('selection-title').textContent = object ? TYPES[object.type].name : 'Осмотрись внутри';
   $('selection-detail').textContent = object ? `${objectSize(object)} · ${ghost ? 'выбери свободное место на сетке' : `X ${meters(object.x)} м · Y ${meters(object.y)} м · поворот ${object.rotation * 90}°`}` : 'Передвигайся по вагону и выбирай место для строительства.';
+  if (object?.type === 'frame') $('selection-detail').textContent += ` · низ ${meters(object.z)} м${object.mount === 'ceiling' ? object.z >= PLAYER.height ? ' · проход свободен' : ' · проход перекрыт' : ''} · объектов внутри: ${object.children?.length || 0}`;
   $('object-count').textContent = String(state.objects.length).padStart(2, '0');
-  const area = state.objects.reduce((sum, object) => { const d = dimensions(object); return sum + d.width * d.depth; }, 0);
+  const occupied = new Set();
+  for (const object of state.objects) { const d = dimensions(object); for (let x = object.x; x < object.x + d.width; x++) for (let y = object.y; y < object.y + d.depth; y++) occupied.add(`${x},${y}`); }
+  const area = occupied.size;
   $('occupancy').innerHTML = `${Math.round(area / (WAGON.width * WAGON.depth) * 100)}<small>%</small>`;
   $('control-hints').innerHTML = ghost
     ? '<span><kbd>ЛКМ</kbd> установить</span><span><kbd>R</kbd> поворот</span><span><kbd>Esc</kbd> отменить</span><span><kbd>W A S D</kbd> движение</span>'
@@ -89,9 +115,16 @@ function snapGhost() {
   updatePlacement();
 }
 function chooseType(type) {
+  let settings = {};
+  if (type === 'frame') {
+    try { for (const [key, input] of Object.entries(frameFields)) settings[key] = readVoxels(input); }
+    catch (error) { toast(error.message, true); return; }
+    settings.mount = $('frame-mount').value;
+    settings.children = []; settings.nextItemId = 1;
+  }
   mode = 'build'; movingId = null; selectedId = null;
   buildMenuOpen = false;
-  ghost = { type, x: 26, y: 5, z: 0, rotation: 0 };
+  ghost = { type, x: 26, y: 5, z: settings.mount === 'ceiling' ? WAGON.height - settings.height : 0, rotation: 0, ...settings };
   snapGhost();
   updateUI();
   canvas.focus({ preventScroll: true });
@@ -143,13 +176,18 @@ for (const [index, [type, definition]] of Object.entries(Object.entries(TYPES)))
   button.className = 'catalog-card'; button.dataset.type = type;
   button.style.setProperty('--object-color', definition.color);
   button.setAttribute('aria-pressed', 'false');
-  button.innerHTML = `<span class="catalog-art">${definition.icon}</span><span class="catalog-copy"><strong>${definition.short}</strong><small>${type === 'frame' ? 'Крепление к полу' : 'Свободное сооружение'}</small><em>${objectSize({ type, rotation: 0 })}</em></span><span class="catalog-key">${Number(index) + 3}</span>`;
+  button.innerHTML = `<span class="catalog-art">${definition.icon}</span><span class="catalog-copy"><strong>${definition.short}</strong><small>${type === 'frame' ? 'Размеры и крепление — выше' : 'Свободное сооружение'}</small>${type === 'frame' ? '' : `<em>${objectSize({ type, rotation: 0 })}</em>`}</span><span class="catalog-key">${Number(index) + 3}</span>`;
   button.addEventListener('click', () => chooseType(type));
   $('catalog').append(button);
 }
 $('walk-mode').onclick = () => setMode('walk');
 $('build-mode').onclick = toggleBuildMenu;
 $('close-build-menu').onclick = closeBuildMenu;
+$('edit-frame').onclick = editFrame;
+$('layer-toggle').onclick = () => {
+  visibleLayer = { all: 'floor', floor: 'ceiling', ceiling: 'all' }[visibleLayer];
+  $('layer-toggle').textContent = `Слой: ${{ all: 'все', floor: 'пол', ceiling: 'потолок' }[visibleLayer]}`;
+};
 $('move-object').onclick = startMove;
 $('rotate-object').onclick = rotate;
 $('rotate-ghost').onclick = rotate;
@@ -193,8 +231,11 @@ function screenToWorld(event) {
   const y = (event.clientY - rect.top - view.height / 2) / view.scale;
   return view.vertical ? { x: y + WAGON.width / 2, y: -x + WAGON.depth / 2 } : { x: x + WAGON.width / 2, y: y + WAGON.depth / 2 };
 }
-function objectAt(point) {
-  return [...state.objects].reverse().find(object => { const size = dimensions(object); return point.x >= object.x && point.y >= object.y && point.x < object.x + size.width && point.y < object.y + size.depth; });
+function inLayer(object) { return visibleLayer === 'all' || (object.mount || 'floor') === visibleLayer; }
+function objectAt(point, cycle = false) {
+  const hits = [...state.objects].filter(object => { const size = dimensions(object); return inLayer(object) && point.x >= object.x && point.y >= object.y && point.x < object.x + size.width && point.y < object.y + size.depth; }).sort((a, b) => b.z - a.z);
+  const current = hits.findIndex(object => object.id === selectedId);
+  return hits[cycle && current >= 0 ? (current + 1) % hits.length : 0];
 }
 canvas.addEventListener('pointermove', event => {
   pointer = screenToWorld(event); snapGhost();
@@ -213,19 +254,20 @@ canvas.addEventListener('pointerdown', event => {
     markDirty(); updateUI();
     toast(wasMoving ? 'Объект перемещён' : 'Объект установлен · Esc завершить строительство');
   } else {
-    selectedId = objectAt(pointer)?.id || null;
+    selectedId = objectAt(pointer, true)?.id || null;
     updateUI();
   }
 });
 canvas.addEventListener('contextmenu', event => { event.preventDefault(); cancel(); });
 const movement = { KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1], KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0] };
 window.addEventListener('keydown', event => {
+  if (frameEditor.isOpen) { if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') { event.preventDefault(); save(); } return; }
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target.isContentEditable) return;
   if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') { event.preventDefault(); save(); return; }
   if (event.ctrlKey || event.metaKey || event.altKey) return;
   if (movement[event.code]) { event.preventDefault(); keys.add(event.code); return; }
   if (event.repeat) return;
-  const actions = { Digit1: () => setMode('walk'), Digit2: toggleBuildMenu, KeyB: toggleBuildMenu, Digit3: () => chooseType('frame'), Digit4: () => chooseType('storage'), Digit5: () => chooseType('workbench'), KeyR: rotate, KeyM: startMove, Escape: cancel, Delete: deleteSelected };
+  const actions = { Digit1: () => setMode('walk'), Digit2: toggleBuildMenu, KeyB: toggleBuildMenu, Digit3: () => chooseType('frame'), Digit4: () => chooseType('storage'), Digit5: () => chooseType('workbench'), KeyE: editFrame, KeyR: rotate, KeyM: startMove, Escape: cancel, Delete: deleteSelected };
   if (actions[event.code]) { event.preventDefault(); actions[event.code](); }
 });
 window.addEventListener('keyup', event => keys.delete(event.code));
@@ -250,13 +292,19 @@ function drawObject(object, isGhost = false) {
   const error = isGhost && placementError(state, object, movingId);
   const color = isGhost ? error ? '#ef8d78' : '#b6dd9a' : type.color;
   ctx.save(); ctx.translate(object.x, object.y);
+  if (object.mount === 'ceiling') { ctx.globalAlpha *= 0.7; ctx.setLineDash([0.25, 0.15]); }
   if (!isGhost) rect(0.14, 0.18, d.width, d.depth, '#00000048');
   rect(0.06, 0.06, d.width - 0.12, d.depth - 0.12, isGhost ? error ? '#c6645535' : '#99cb7738' : object.type === 'frame' ? '#403c2b' : object.type === 'storage' ? '#46523f' : '#35494a', color, isGhost ? 0.09 : 0.06);
   if (object.type === 'frame') {
     const corner = 0.35;
     for (const [x, y] of [[0, 0], [d.width - corner, 0], [0, d.depth - corner], [d.width - corner, d.depth - corner]]) rect(x, y, corner, corner, color);
     rect(0.4, 0.4, d.width - 0.8, d.depth - 0.8, null, `${color}66`, 0.035);
-    textWorld('КАРКАС', d.width / 2, d.depth / 2, color, Math.max(0.35, Math.min(d.width / 8, 0.55)));
+    if (!object.children?.length) textWorld(object.mount === 'ceiling' ? `ПОТОЛОК ${meters(object.z)} м` : 'КАРКАС', d.width / 2, d.depth / 2, color, Math.max(0.25, Math.min(d.width / 13, 0.5)));
+    ctx.setLineDash([]);
+    for (const item of object.children || []) {
+      const world = worldEquipment(object, item), box = dimensions(world), childColor = EQUIPMENT[item.type].color;
+      rect(world.x - object.x + 0.08, world.y - object.y + 0.08, box.width - 0.16, box.depth - 0.16, `${childColor}55`, childColor, 0.05);
+    }
   } else if (object.type === 'storage') {
     rect(0.35, 0.35, d.width - 0.7, d.depth - 0.7, null, `${color}88`);
     rect(d.width / 2 - 0.12, 0.2, 0.24, d.depth - 0.4, `${color}88`);
@@ -289,8 +337,9 @@ function render() {
     rect(x, -0.45, 1.6, 0.16, '#d5b36a'); rect(x, WAGON.depth + 0.29, 1.6, 0.16, '#d5b36a');
   }
   for (let x = 0; x <= WAGON.width; x += 4) textWorld(String(x / 4).padStart(2, '0'), x, -1, '#79866a', 0.42);
-  for (const object of state.objects) {
-    if (movingId === object.id) ctx.globalAlpha = 0.35;
+  for (const object of [...state.objects].sort((a, b) => a.z - b.z)) {
+    if (!inLayer(object)) ctx.globalAlpha = 0.18;
+    if (movingId === object.id) ctx.globalAlpha *= 0.35;
     drawObject(object); ctx.globalAlpha = 1;
   }
   const player = state.player;
@@ -310,7 +359,7 @@ function frame(time) {
   if (previousTime) accumulator += Math.min((time - previousTime) / 1000, 0.1);
   previousTime = time;
   let dx = 0, dy = 0;
-  for (const key of keys) { const vector = movement[key]; if (vector) { dx += vector[0]; dy += vector[1]; } }
+  if (!frameEditor.isOpen) for (const key of keys) { const vector = movement[key]; if (vector) { dx += vector[0]; dy += vector[1]; } }
   // Screen directions follow the wagon's portrait orientation on small screens.
   if (view.vertical) [dx, dy] = [dy, -dx];
   const beforeX = state.player.x, beforeY = state.player.y;

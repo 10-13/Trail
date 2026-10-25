@@ -22,7 +22,8 @@ jobs:
           node-version: '22'
       - run: npm test
       - name: Check JavaScript syntax
-        run: node --check web/game.js && node --check web/core.js
+        run: |
+          for source in web/*.js; do node --check "$source"; done
   deploy:
     needs: test
     runs-on: ubuntu-latest
