@@ -2,14 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createFactoryDemo } from '../web/production-demo.js';
-import { serialize, deserialize } from '../web/core.js';
+import { serialize, deserialize, dimensions } from '../web/core.js';
 import { simulationTick, resourceTotals, count, simulationError } from '../web/simulation.js';
 const owner=(frame,index)=>`${frame.id}/${frame.children[index].id}`;
 
 test('two lines cross racks and shelves, consume finite feed, and conserve every resource',()=>{
   const s=createFactoryDemo(),[feed,process,products]=s.objects;
-  assert.equal(s.objects.length,3);assert.equal(s.graph.links.length,10);assert.equal(s.graph.pipes.length,120);
-  assert.ok(s.pipes.length>0);assert.ok(s.pipes.every(p=>p.rackIds.length===2));assert.ok(s.graph.pipes.every(p=>p.faces.length===2));
+  assert.equal(s.objects.length,3);assert.equal(s.graph.links.length,10);assert.equal(s.graph.pipes.length,88);
+  assert.deepEqual(s.pipes,[]);assert.ok(s.graph.pipes.every(p=>p.faces.length===2));
+  for(const pipe of s.graph.pipes){const rack=s.objects.find(f=>f.id===pipe.frameId),size=dimensions(rack);assert.ok(rack);assert.ok(pipe.x>=rack.x&&pipe.x<rack.x+size.width&&pipe.y>=rack.y&&pipe.y<rack.y+size.depth&&pipe.z>=rack.z&&pipe.z<rack.z+size.height);}
   assert.deepEqual(process.children.map(o=>o.shelfId),['shelf-1','shelf-2','shelf-1','shelf-2']);
   assert.ok(s.graph.links.filter(l=>l.from.startsWith(process.id)&&l.to.startsWith(process.id)).every(l=>{
     const pipes=s.graph.pipes.filter(p=>l.pipeIds.includes(p.id));return pipes.some(p=>p.faces.includes('pz'));

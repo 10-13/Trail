@@ -113,7 +113,7 @@ export function rackAtCell(state,world) {
 export function pipeScope(state, frameId) {
   return frameId ? state.objects.find(item => item.id === frameId && item.type === 'frame')?.pipes : state.pipes;
 }
-export function canonicalPipe(pipe) { return { id: pipe.id, x: pipe.x, y: pipe.y, z: pipe.z, faces: [...pipe.faces], ...(pipe.rackIds?{rackIds:[...pipe.rackIds]}:{}) }; }
+export function canonicalPipe(pipe) { return { id: pipe.id, x: pipe.x, y: pipe.y, z: pipe.z, faces: [...pipe.faces] }; }
 export function pipeShapeError(pipe) {
   if (!pipe || ![pipe.x, pipe.y, pipe.z].every(Number.isInteger)) return 'Труба должна быть привязана к объёмной сетке';
   if (!Array.isArray(pipe.faces) || pipe.faces.length !== 2 || new Set(pipe.faces).size !== pipe.faces.length || pipe.faces.some(face => !Object.hasOwn(DIRECTIONS, face))) return 'Труба соединяет ровно две грани; ответвления запрещены';
@@ -143,10 +143,7 @@ export function networkError(state, checkPlayer = true, allowLegacy = false) {
       if (typeof pipe.id !== 'string' || !/^pipe-[1-9]\d*$/.test(pipe.id) || ids.has(pipe.id) || Number(pipe.id.slice(5)) >= next) return 'Некорректный идентификатор трубы';
       if (pipe.x < 0 || pipe.y < 0 || pipe.z < 0 || pipe.x >= bounds.width || pipe.y >= bounds.depth || pipe.z >= bounds.height) return group.frame ? 'Труба выходит за границы каркаса' : 'Труба выходит за границы вагона';
       const world = worldPipe(group.frame, pipe), key = cellKey(world);
-      if(!group.frame&&!allowLegacy){
-        if(!Array.isArray(pipe.rackIds)||pipe.rackIds.length!==2||new Set(pipe.rackIds).size!==2||pipe.rackIds.some(id=>!state.objects.some(o=>o.type==='frame'&&o.id===id)))return 'Труба должна принадлежать соединению двух стеллажей';
-        if(rackAtCell(state,world))return 'Внутренняя труба должна принадлежать своему стеллажу';
-      }
+      if(!group.frame&&!allowLegacy)return 'Трубы размещаются только внутри стеллажей';
 
       if (occupied.has(key)) return 'Ячейка уже занята трубой';
       if (world.x < 0 || world.y < 0 || world.z < 0 || world.x >= WAGON.width || world.y >= WAGON.depth || world.z >= WAGON.height) return 'Труба выходит за границы вагона';

@@ -64,7 +64,7 @@ export function placementError(state, object, ignoreId = null, checkPlayer = tru
   const other = state.objects.find(item => item.id !== ignoreId && intersects(object, item));
   if (other) return `Место занято: ${TYPES[other.type].short.toLowerCase()}`;
   if (checkPlayer && hitsPlayer(object, state.player)) return 'Здесь стоит персонаж — отойди в сторону';
-  const future = { ...state, pipes:state.pipes.filter(p=>!ignoreId||!frameTransformChanged(state.objects.find(o=>o.id===ignoreId),object)||!p.rackIds?.includes(ignoreId)), objects: [...state.objects.filter(item => item.id !== ignoreId), object] };
+  const future = { ...state, objects: [...state.objects.filter(item => item.id !== ignoreId), object] };
   const pipeError = networkError(future, checkPlayer);
   if (pipeError) return pipeError;
   return '';
@@ -91,7 +91,6 @@ export function putObject(state, candidate, movingId = null) {
   if (movingId && !state.objects.some(item => item.id === movingId)) return 'Объект для перемещения не найден';
   const error = placementError(state, candidate, movingId);
   if (error) return error;
-  if(movingId&&frameTransformChanged(state.objects.find(o=>o.id===movingId),candidate))removeRackBridges(state,movingId);
   const object = canonicalObject({ ...candidate, id: movingId || `object-${state.nextId}` });
   if (movingId) state.objects = state.objects.map(item => item.id === movingId ? object : item);
   else { state.objects.push(object); state.nextId++; }
@@ -189,8 +188,9 @@ export function paintPipeRoute(state, frameId, from, to, preview = false) {
   if (![to?.x, to?.y, to?.z, ...(from ? [from.x, from.y, from.z] : [])].every(Number.isInteger)) return 'Маршрут должен быть привязан к сетке';
   return paintPipeCells(state, frameId, routeCells(from, to), preview, to.faces);
 }
-function paintPipeCells(state, frameId, cells, preview = false, heading = ['nx','px'], rackIds = []) {
-  if(!frameId&&!rackIds.length)return 'Трубы размещаются только внутри стеллажа';
+function paintPipeCells(state, frameId, cells, preview = false, heading = ['nx','px'], frameIds = []) {
+  if(!frameId&&!frameIds.length)return 'Трубы размещаются только внутри стеллажа';
+  if(!frameId&&cells.some(cell=>!frameIds.includes(rackAtCell(state,cell)?.id)))return 'Трубы не могут проходить вне стеллажей';
   const future = structuredClone(state), pipes = pipeScope(future, frameId); if (!pipes) return 'Каркас не найден';
   const parent = frameId ? future.objects.find(item => item.id === frameId) : null, limit = parent ? localSize(parent) : WAGON;
   if (cells.some(c => c.x < 0 || c.y < 0 || c.z < 0 || c.x >= limit.width || c.y >= limit.depth || c.z >= limit.height)) return 'Маршрут выходит за границы';
@@ -206,8 +206,9 @@ function paintPipeCells(state, frameId, cells, preview = false, heading = ['nx',
       refs.set(cellKey(cell), { raw: (owner ? owner.pipes : future.pipes).find(pipe => pipe.id === existing.id), owner, existing });
     } else {
       const world=worldPipe(parent,{...cell,faces:[]}),owner=parent||rackAtCell(future,world);
-      const pipe={...(owner?localCell(owner,world):world),id:`pipe-${future.nextPipeId++}`,faces:[],...(!owner?{rackIds:[...rackIds]}:{})};
-      (owner?owner.pipes:future.pipes).push(pipe);refs.set(cellKey(cell),{raw:pipe,owner});
+      if(!owner)return 'Трубы не могут проходить вне стеллажей';
+      const pipe={...localCell(owner,world),id:`pipe-${future.nextPipeId++}`,faces:[]};
+      owner.pipes.push(pipe);refs.set(cellKey(cell),{raw:pipe,owner});
     }
   }
   const direction = (a,b) => Object.keys(DIRECTIONS).find(face => sameCell(adjacent(a,face), b));
@@ -236,24 +237,25 @@ function paintPipeCells(state, frameId, cells, preview = false, heading = ['nx',
   }
   return '';
 }
-// Join two visible connection points, including the gap outside both frames.
+// Join visible connection points using only cells owned by the endpoint racks.
 // Endpoints have an outward face; the first and last cells stay straight.
 export function connectEndpoints(state, first, second, preview = false) {
   if (!first || !second || first.id === second.id) return 'Выбери два разных подключения';
   if (first.kind !== 'pipe' && second.kind !== 'pipe' && first.kind === second.kind) return 'Соедини выход со входом';
   const frameIds=[...new Set([first,second].flatMap(endpoint=>{
     if(endpoint.frameId)return [endpoint.frameId];
-    const pipe=allPipes(state).find(p=>p.id===endpoint.pipeId);return pipe?.frameId?[pipe.frameId]:pipe?.rackIds||[];
+    const pipe=allPipes(state).find(p=>p.id===endpoint.pipeId);return pipe?.frameId?[pipe.frameId]:[];
   }))];
   if(!frameIds.length||frameIds.length>2||frameIds.some(id=>!state.objects.some(o=>o.id===id&&o.type==='frame')))return 'Соединять можно только объекты в стеллажах';
   const start = first.neighbor, end = second.neighbor;
   const lead = adjacent(start, first.face), tail = adjacent(end, second.face);
   const solids = state.objects.flatMap(o => o.type === 'frame' ? o.children.map(item => transformBox(o,item)) : [o]);
   const occupied = new Set(allPipes(state).map(cellKey));
-  const permitted=c=>{const rack=rackAtCell(state,c);return frameIds.length===1?rack?.id===frameIds[0]:!rack||frameIds.includes(rack.id);};
+  const permitted=c=>frameIds.includes(rackAtCell(state,c)?.id);
   const free = c => permitted(c)&&c.x >= 0 && c.y >= 0 && c.z >= 0 && c.x < WAGON.width && c.y < WAGON.depth && c.z < WAGON.height && !solids.some(o => {
     const d=dimensions(o); return c.x>=o.x && c.y>=o.y && c.z>=o.z && c.x<o.x+d.width && c.y<o.y+d.depth && c.z<o.z+d.height;
   }) && !pipeHitsPlayer(c,state.player) && (!occupied.has(cellKey(c)) || sameCell(c,start) || sameCell(c,end));
+  if(!permitted(start)||!permitted(end))return 'Соединение выходит за пределы стеллажей. Поставь стеллажи вплотную';
   if (!free(start) || !free(end)) return 'Подключение занято оборудованием, трубой или персонажем';
   let cells;
   if (sameCell(start,end)) {
@@ -261,6 +263,7 @@ export function connectEndpoints(state, first, second, preview = false) {
     cells = [start];
   } else if (sameCell(adjacent(start,first.face),end) && first.face === OPPOSITE[second.face]) cells = [start,end];
   else {
+    if(!permitted(lead)||!permitted(tail))return 'Для прямых концов нужно место внутри стеллажей. Поставь стеллажи вплотную';
     if (!free(lead) || !free(tail) || sameCell(lead,end) || sameCell(tail,start)) return 'Для прямых концов нужно свободное место перед подключениями';
     const queue=[lead], previous=new Map([[cellKey(lead),null]]);
     for(let cursor=0;cursor<queue.length && !previous.has(cellKey(tail));cursor++) for(const face of Object.keys(DIRECTIONS)) {
@@ -268,7 +271,7 @@ export function connectEndpoints(state, first, second, preview = false) {
       if(previous.has(key)||sameCell(next,start)||sameCell(next,end)||!free(next)) continue;
       previous.set(key,queue[cursor]);queue.push(next);
     }
-    if(!previous.has(cellKey(tail))) return 'Нет свободного пути между подключениями';
+    if(!previous.has(cellKey(tail))) return 'Нет свободного пути внутри стеллажей. Для соединения поставь их вплотную';
     cells=[];for(let c=tail;c;c=previous.get(cellKey(c)))cells.push(c);cells.reverse();cells=[start,...cells,end];
   }
   const only=frameIds.length===1?state.objects.find(o=>o.id===frameIds[0]):null;
@@ -297,14 +300,12 @@ export function updatePipeFaces(state, id, faces) {
 }
 // Convert a local child box to wagon coordinates, including the parent's rotation.
 export function worldEquipment(frame, item) { return transformBox(frame, item); }
-function frameTransformChanged(before,after){return before&&(['x','y','z','width','depth','height'].some(k=>(before[k]??localSize(before)[k])!==(after[k]??localSize(after)[k]))||orientationOf(before).some((v,i)=>v!==orientationOf(after)[i]));}
-function removeRackBridges(state,id){const ids=new Set(state.pipes.filter(p=>p.rackIds?.includes(id)).map(p=>p.id));for(const pipeId of ids)if(pipeTokens(state,pipeId).length)collectResources(state,pipeId);state.pipes=state.pipes.filter(p=>!ids.has(p.id));}
 export function removeObject(state,id){
   const object=state.objects.find(o=>o.id===id);if(!object)return '';
   const sim=ensureSimulation(state);
   for(const owner of Object.keys(sim.containers))if(owner===id||owner.startsWith(`${id}/`))collectResources(state,owner);
   for(const pipe of object.pipes||[])if(pipeTokens(state,pipe.id).length)collectResources(state,pipe.id);
-  removeRackBridges(state,id);state.objects=state.objects.filter(o=>o.id!==id);rebuildGraph(state);ensureSimulation(state);return '';
+  state.objects=state.objects.filter(o=>o.id!==id);rebuildGraph(state);ensureSimulation(state);return '';
 }
 export function canStand(state, player) {
   return Number.isFinite(player.x) && Number.isFinite(player.y) && player.x >= PLAYER.radius && player.x <= WAGON.width - PLAYER.radius && player.y >= PLAYER.radius && player.y <= WAGON.depth - PLAYER.radius && !state.objects.some(object => hitsPlayer(object, player)) && !allPipes(state).some(pipe => pipeHitsPlayer(pipe, player));
@@ -364,14 +365,14 @@ export function deserialize(text) {
     ids.add(item.id); result.objects.push(canonicalObject(item));
   }
   result.pipes = data.pipes ?? [];
-  const pipeError = networkError(result, false, data.version<6); if (pipeError) throw new Error(pipeError);
+  const pipeError = networkError(result, false, true); if (pipeError) throw new Error(pipeError);
   result.pipes = result.pipes.map(canonicalPipe);
   if (!data.player || !Number.isFinite(data.player.angle) || !canStand(result, data.player)) throw new Error('Некорректное положение персонажа');
   result.player = { x: data.player.x, y: data.player.y, angle: data.player.angle };
   result.nextId = data.nextId;
   rebuildGraph(result);
   if(data.version>=4){const error=simulationError(result,data.simulation);if(error)throw new Error(error);result.simulation=structuredClone(data.simulation);}
-  if(data.version<6){const migrated=migrateOwnedPipes(result);if(wrapped||leveled||migrated.adopted||migrated.recovered)result.migrationNotice=[result.migrationNotice,'Схема обновлена: объекты и трубы привязаны к стеллажам.',migrated.recovered?'Бесхозные трубы разобраны, содержимое возвращено в запас.':'',leveled?'Полки выровнены параллельно полу.':''].filter(Boolean).join(' ');}
+  if(data.version<6||result.pipes.length){const migrated=migrateOwnedPipes(result);if(wrapped||leveled||migrated.adopted||migrated.recovered)result.migrationNotice=[result.migrationNotice,'Схема обновлена: объекты и трубы привязаны к стеллажам.',migrated.recovered?'Трубы вне стеллажей разобраны, содержимое возвращено в запас.':'',leveled?'Полки выровнены параллельно полу.':''].filter(Boolean).join(' ');}
   const ownershipError=networkError(result,false);if(ownershipError)throw new Error(ownershipError);
   rebuildGraph(result);ensureSimulation(result);return result;
 }

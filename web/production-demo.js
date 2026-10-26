@@ -24,11 +24,11 @@ export function createProductionDemo(){
 
 // Two independent lines share a wagon, but never share a pipe or a buffer.
 // Feed/sludge on the left, filtering below separation in the middle,
-// clean oil/residue on the right. Every bridge belongs to its two racks.
+// clean oil/residue on the right. Touching racks keep every pipe inside a rack.
 export function createFactoryDemo(){
   const state=createState(false),check=error=>{if(error)throw new Error(error);};
   state.player={x:1.5,y:1.5,angle:0};
-  for(const [x,width]of [[3,10],[17,14],[35,10]])check(putObject(state,{type:'frame',x,y:3,z:0,rotation:0,width,depth:8,height:8,shelves:makeShelves([4,4]),mount:'floor',children:[],nextItemId:1}));
+  for(const [x,width]of [[7,10],[17,14],[31,10]])check(putObject(state,{type:'frame',x,y:3,z:0,rotation:0,width,depth:8,height:8,shelves:makeShelves([4,4]),mount:'floor',children:[],nextItemId:1}));
   const [feed,process,products]=state.objects,lines=[];
   const port=(id,kind,face,u,v,resource)=>({id:`port-${id}`,kind,face,u,v,resources:[resource]});
   function add(frame,type,x,y,level,ports){

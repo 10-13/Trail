@@ -100,7 +100,7 @@ export function createPipeInspector(host,{getPipe,apply,changed,message}) {
   for(const face of Object.keys(DIRECTIONS)){const row=el('label'),input=el('input');input.type='checkbox';input.value=face;row.append(input,el('span','',FACE_NAMES[face]));options.append(row);checks[face]=input;}
   const button=el('button','','Применить грани');button.type='button';button.onclick=()=>{const pipe=getPipe();if(!pipe)return;const error=apply(Object.entries(checks).filter(([,input])=>input.checked).map(([face])=>face));if(error)message(error,true);else{changed();message('Грани трубы обновлены');}};
   wrapper.append(label,options,button);host.append(wrapper);
-  return {refresh(){const pipe=getPipe();wrapper.hidden=!pipe;if(!pipe)return;label.textContent=`Труба · вместимость ${PIPE_CAPACITY} ед. · высота ${((pipe.worldZ??pipe.z)/4).toLocaleString('ru-RU')} м${pipe.rackIds?` · соединение стеллажей ${pipe.rackIds.map(id=>id.slice(7)).join(' ↔ ')}`:''}`;for(const [face,input] of Object.entries(checks))input.checked=pipe.faces.includes(face);}};
+  return {refresh(){const pipe=getPipe();wrapper.hidden=!pipe;if(!pipe)return;label.textContent=`Труба · вместимость ${PIPE_CAPACITY} ед. · высота ${((pipe.worldZ??pipe.z)/4).toLocaleString('ru-RU')} м`;for(const [face,input] of Object.entries(checks))input.checked=pipe.faces.includes(face);}};
 }
 export function drawProjectedPipe(ctx,pipe,view,{alpha=1,highlight=false,preview=false,error=false,contents=[]}={}) {
   const scale=view.scale,x=view.ox+(pipe[view.axes[0]]+.5)*scale,y=view.oy+(view.flip?view.height-pipe[view.axes[1]]-.5:pipe[view.axes[1]]+.5)*scale;

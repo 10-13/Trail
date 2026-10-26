@@ -1,4 +1,3 @@
-import { wrapLegacyObject } from '../web/ownership.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createState, putObject, putEquipment, putPipe, paintPipeRoute, connectEndpoints, serialize, deserialize, worldEquipment, updatePipeFaces, updateFrame } from '../web/core.js';
@@ -8,7 +7,7 @@ const frame=(extra={})=>({type:'frame',x:10,y:1,z:0,rotation:0,width:6,depth:6,h
 const item=(extra={})=>({type:'machine',x:1,y:1,z:1,rotation:0,width:2,depth:3,height:4,...extra});
 function neighbors(){
   const state=createState(false);
-  assert.equal(putObject(state,frame()),'');assert.equal(putObject(state,frame({x:22})),'');
+  assert.equal(putObject(state,frame({width:10})),'');assert.equal(putObject(state,frame({x:20,width:10})),'');
   for(const f of state.objects)assert.equal(putEquipment(state,f.id,item()),'');
   return {state,a:state.objects[0],b:state.objects[1]};
 }
@@ -61,24 +60,24 @@ test('incremental brush turns replace only a free terminal face and finish with 
   const before=serialize(state);assert.match(paintPipeRoute(state,frameId,c(11,3),c(11,5)),/Ответвление/);assert.equal(serialize(state),before);
   assert.match(updatePipeFaces(state,at(11,3).id,['nx','px','py']),/две грани/);
 });
-test('neighbor list includes other frame ports and free pipe ends; connection bridges both frames',()=>{
+test('neighbor list includes other frame ports and free pipe ends; connection stays inside two touching frames',()=>{
   const {state,a,b}=neighbors();
   const near=neighboringConnections(state,a);assert.equal(near.filter(p=>p.frameId===b.id).length,2);
   const ports=worldPorts(state),out=ports.find(p=>p.frameId===a.id&&p.kind==='output'),input=ports.find(p=>p.frameId===b.id&&p.kind==='input');
   const before=serialize(state);assert.equal(connectEndpoints(state,out,input,true),'');assert.equal(serialize(state),before);
   assert.equal(connectEndpoints(state,out,input),'');assert.equal(state.graph.links.length,1);
-  assert.ok(state.pipes.some(p=>p.x>=16&&p.x<22));assert.ok(pipesInFrame(state,a).length);assert.ok(pipesInFrame(state,b).length);
-  assert.equal(state.pipes[0].faces[0],OPPOSITE[state.pipes[0].faces[1]]);const last=state.pipes.at(-1);assert.equal(last.faces[0],OPPOSITE[last.faces[1]]);
+  assert.deepEqual(state.pipes,[]);assert.ok(pipesInFrame(state,a).length);assert.ok(pipesInFrame(state,b).length);
+  for(const id of [state.graph.links[0].pipeIds[0],state.graph.links[0].pipeIds.at(-1)]){const p=allPipes(state).find(p=>p.id===id);assert.equal(p.faces[0],OPPOSITE[p.faces[1]]);}
   assert.equal(serialize(deserialize(serialize(state))),serialize(state));
 });
-test('automatic bridge navigates a three dimensional obstacle and keeps ends straight',()=>{
-  const {state,a,b}=neighbors();assert.equal(putObject(state,wrapLegacyObject({type:'storage',x:18,y:2,z:0,rotation:0})),'');
+test('automatic connection navigates an internal obstacle and keeps ends straight',()=>{
+  const {state,a,b}=neighbors();assert.equal(putEquipment(state,a.id,{type:'machine',x:6,y:2,z:1,rotation:0,width:1,depth:1,height:2,ports:[],nextPortId:1}),'');
   const ports=worldPorts(state),out=ports.find(p=>p.frameId===a.id&&p.kind==='output'),input=ports.find(p=>p.frameId===b.id&&p.kind==='input');
   assert.equal(connectEndpoints(state,out,input),'');assert.equal(state.graph.links.length,1);
-  assert.ok(state.pipes.some(p=>p.z>=3||p.y<2||p.y>=5));
+  assert.deepEqual(state.pipes,[]);assert.ok(allPipes(state).some(p=>p.z!==1||p.y!==3));
   for(const id of [state.graph.links[0].pipeIds[0],state.graph.links[0].pipeIds.at(-1)]){const p=allPipes(state).find(p=>p.id===id);assert.equal(p.faces[0],OPPOSITE[p.faces[1]]);}
 });
-test('joining a dangling neighbor pipe extends it, and a blocked bridge is atomic',()=>{
+test('joining a dangling neighbor pipe extends it, and a blocked connection is atomic',()=>{
   const {state,a,b}=neighbors();const ports=worldPorts(state),input=ports.find(p=>p.frameId===b.id&&p.kind==='input');
   assert.equal(paintPipeRoute(state,a.id,{x:3,y:2,z:1},{x:5,y:2,z:1}),'');
   const end=neighboringConnections(state,b).find(p=>p.kind==='pipe'&&p.face==='px');assert.ok(end);
@@ -91,4 +90,10 @@ test('legacy branching saves are normalized without rejecting the whole layout',
   data.version=3;data.objects[0].pipes[1].faces=['nx','px','py'];data.objects[0].pipes[0].faces=[];
   const loaded=deserialize(JSON.stringify(data));assert.ok(loaded.migrationNotice);assert.ok(allPipes(loaded).every(p=>p.faces.length===2));
   assert.equal(loaded.objects.length,2);
+});
+
+test('separated racks cannot be joined through unowned space, even in preview',()=>{
+  const state=createState(false);for(const x of [10,22]){assert.equal(putObject(state,frame({x})),'');assert.equal(putEquipment(state,state.objects.at(-1).id,item({x:x===10?1:3})),'');}
+  const ports=worldPorts(state),out=ports.find(p=>p.frameId===state.objects[0].id&&p.kind==='output'),input=ports.find(p=>p.frameId===state.objects[1].id&&p.kind==='input'),before=serialize(state);
+  for(const preview of [true,false]){assert.match(connectEndpoints(state,out,input,preview),/внутри стеллажей/);assert.equal(serialize(state),before);}
 });

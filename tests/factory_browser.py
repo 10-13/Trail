@@ -17,7 +17,7 @@ def run(page,phone=False):
     assert json.loads(page.evaluate("localStorage.getItem('trail.stage1.layout.v1')"))==original,'Opening a demo must preserve the saved layout'
     expect(page.locator('#editor-network summary')).to_contain_text('Связи: 10')
     expect(page.locator('#editor-simulation [data-factory-demo]')).to_be_visible()
-    loaded=snapshot(page);assert len(loaded['objects'])==3;assert sum(len(f['children'])for f in loaded['objects'])==12
+    loaded=snapshot(page);assert len(loaded['objects'])==3;assert sum(len(f['children'])for f in loaded['objects'])==12;assert loaded['pipes']==[]
     if not phone:
         for _ in range(100):page.locator('#editor-simulation [data-sim-step]').click()
         working=snapshot(page);assert stock(working,'clean')>0;assert stock(working,'crude')>0
@@ -36,11 +36,22 @@ def run(page,phone=False):
         if stock(snapshot(page),'clean')==128:break
     page.locator('#editor-simulation [data-sim-toggle]').click();finished=snapshot(page)
     assert stock(finished,'clean')==128 and stock(finished,'sludge')==64 and stock(finished,'residue')==64
-    assert all(len(t)<=4 for t in finished['simulation']['pipes'].values())
+    assert all(len(t)<=4 for t in finished['simulation']['pipes'].values());assert finished['pipes']==[]
     page.reload();page.wait_for_selector('.catalog-card',state='attached');assert snapshot(page)==finished
     page.locator('#world-simulation [data-production-demo]').click();restored=snapshot(page)
     assert restored==original,'Returning from the factory must restore the complete original state'
     expect(page.locator('#world-simulation [data-factory-demo]')).to_be_visible()
+    # Even the automatic neighboring-port tool must refuse a gap between racks.
+    spaced=json.loads(json.dumps(loaded));spaced['objects'][0]['x']=3
+    for f in spaced['objects']:f['pipes']=[]
+    spaced['simulation']['pipes']={}
+    page.keyboard.press('Tab');page.locator('#import-file').set_input_files({'name':'spaced-racks.json','mimeType':'application/json','buffer':json.dumps(spaced).encode()})
+    expect(page.locator('#toast')).to_contain_text('импортирована');page.keyboard.press('Escape');click_world(page,24,6);page.locator('#edit-frame').click();page.locator('#rack-view-plan').click();page.keyboard.press('Tab')
+    nearby=page.locator('#neighbor-connections');nearby.locator('summary').click()
+    feed,process=spaced['objects'][:2]
+    nearby.get_by_label('Подключение этого стеллажа').select_option(f"{process['id']}/{process['children'][0]['id']}/port-1")
+    nearby.get_by_label('Соседнее подключение').select_option(f"{feed['id']}/{feed['children'][0]['id']}/port-1")
+    before=snapshot(page);nearby.locator('[data-connect-frames]').click();expect(page.locator('#editor-message')).to_contain_text('внутри стеллажей');assert snapshot(page)==before
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
     assert not errors,errors
 
@@ -48,4 +59,4 @@ with sync_playwright()as p:
     browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
     run(browser.new_page(viewport={'width':1600,'height':1000}))
     run(browser.new_page(viewport={'width':390,'height':844},is_mobile=True,has_touch=True),True)
-    browser.close();print('PASS: large example controls, both shelves, visible active transport, complete yields, save/reload and exact original restoration on desktop and phone')
+    browser.close();print('PASS: large example controls, both shelves, visible active transport, complete yields, save/reload and exact original restoration and rejection of outside routes on desktop and phone')
