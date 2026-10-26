@@ -12,7 +12,7 @@ export function createSimulationControls(host,{getState,changed,step,demo,demoAc
   fast.onclick=()=>{const sim=ensureSimulation(getState());sim.running=!(sim.running&&sim.rate===10000);sim.rate=10000;changed();};
   toggle.type=single.type='button';toggle.dataset.simToggle='';single.dataset.simStep='';toggle.onclick=()=>{const sim=ensureSimulation(getState());if(sim.running)sim.running=false;else{sim.rate=4;sim.running=true;}changed();};single.onclick=step;
   inventory.append(summary,stock);row.append(toggle,fast,single,tps,clock,inventory);
-  let sample;if(demo){sample=el('button','','Пример');sample.type='button';sample.dataset.productionDemo='';sample.onclick=demo;row.append(sample);}
+  let sample,factory;if(demo){sample=el('button','','Пример');sample.type='button';sample.dataset.productionDemo='';sample.onclick=()=>demo();factory=el('button','','Большой пример');factory.type='button';factory.dataset.factoryDemo='';factory.title='Две линии · три стеллажа · 256 нефти';factory.onclick=()=>demo('factory');row.append(sample,factory);}
   host.append(row);
   return {refresh(){const sim=ensureSimulation(getState());toggle.textContent=sim.running?'Ⅱ Пауза':'▶ Пуск';toggle.setAttribute('aria-pressed',sim.running);single.disabled=sim.running;fast.classList.toggle('active',sim.running&&sim.rate===10000);fast.setAttribute('aria-pressed',sim.running&&sim.rate===10000);tps.textContent=`TPS ${sim.running?(getMetrics().tps||0).toLocaleString('ru-RU'):'0'}`;tps.title=`Цель: ${(sim.rate||4).toLocaleString('ru-RU')} TPS`;clock.textContent=`${(sim.tick/4).toLocaleString('ru-RU')} с`;summary.textContent=`Запас · ${count(sim.inventory)}`;stockChips(stock,sim.inventory);if(sample)sample.textContent=demoActive()?'Вернуть схему':'Пример';}};
 }

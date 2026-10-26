@@ -1,0 +1,1936 @@
+{
+  "version": 6,
+  "wagon": {
+    "width": 48,
+    "depth": 12,
+    "height": 10,
+    "voxel": 0.25
+  },
+  "nextId": 8,
+  "nextPipeId": 121,
+  "simulation": {
+    "running": false,
+    "rate": 4,
+    "tick": 0,
+    "inventory": {},
+    "containers": {
+      "object-5/item-1": {
+        "input": {},
+        "output": {},
+        "stored": {
+          "crude": 128
+        },
+        "progress": 0,
+        "enabled": true,
+        "capacity": 128,
+        "cursor": 0
+      },
+      "object-5/item-2": {
+        "input": {},
+        "output": {},
+        "stored": {},
+        "progress": 0,
+        "enabled": true,
+        "capacity": 128,
+        "cursor": 0
+      },
+      "object-5/item-3": {
+        "input": {},
+        "output": {},
+        "stored": {
+          "crude": 128
+        },
+        "progress": 0,
+        "enabled": true,
+        "capacity": 128,
+        "cursor": 0
+      },
+      "object-5/item-4": {
+        "input": {},
+        "output": {},
+        "stored": {},
+        "progress": 0,
+        "enabled": true,
+        "capacity": 128,
+        "cursor": 0
+      },
+      "object-6/item-1": {
+        "input": {},
+        "output": {},
+        "stored": {},
+        "progress": 0,
+        "enabled": true,
+        "capacity": 128,
+        "cursor": 0
+      },
+      "object-6/item-2": {
+        "input": {},
+        "output": {},
+        "stored": {},
+        "progress": 0,
+        "enabled": true,
+        "capacity": 128,
+        "cursor": 0
+      },
+      "object-6/item-3": {
+        "input": {},
+        "output": {},
+        "stored": {},
+        "progress": 0,
+        "enabled": true,
+        "capacity": 128,
+        "cursor": 0
+      },
+      "object-6/item-4": {
+        "input": {},
+        "output": {},
+        "stored": {},
+        "progress": 0,
+        "enabled": true,
+        "capacity": 128,
+        "cursor": 0
+      },
+      "object-7/item-1": {
+        "input": {},
+        "output": {},
+        "stored": {},
+        "progress": 0,
+        "enabled": true,
+        "capacity": 128,
+        "cursor": 0
+      },
+      "object-7/item-2": {
+        "input": {},
+        "output": {},
+        "stored": {},
+        "progress": 0,
+        "enabled": true,
+        "capacity": 128,
+        "cursor": 0
+      },
+      "object-7/item-3": {
+        "input": {},
+        "output": {},
+        "stored": {},
+        "progress": 0,
+        "enabled": true,
+        "capacity": 128,
+        "cursor": 0
+      },
+      "object-7/item-4": {
+        "input": {},
+        "output": {},
+        "stored": {},
+        "progress": 0,
+        "enabled": true,
+        "capacity": 128,
+        "cursor": 0
+      }
+    },
+    "pipes": {}
+  },
+  "pipes": [
+    {
+      "id": "pipe-8",
+      "x": 13,
+      "y": 5,
+      "z": 0,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-5",
+        "object-6"
+      ]
+    },
+    {
+      "id": "pipe-9",
+      "x": 14,
+      "y": 5,
+      "z": 0,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-5",
+        "object-6"
+      ]
+    },
+    {
+      "id": "pipe-10",
+      "x": 15,
+      "y": 5,
+      "z": 0,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-5",
+        "object-6"
+      ]
+    },
+    {
+      "id": "pipe-11",
+      "x": 16,
+      "y": 5,
+      "z": 0,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-5",
+        "object-6"
+      ]
+    },
+    {
+      "id": "pipe-23",
+      "x": 16,
+      "y": 4,
+      "z": 0,
+      "faces": [
+        "px",
+        "nx"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-5"
+      ]
+    },
+    {
+      "id": "pipe-24",
+      "x": 15,
+      "y": 4,
+      "z": 0,
+      "faces": [
+        "px",
+        "nx"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-5"
+      ]
+    },
+    {
+      "id": "pipe-25",
+      "x": 14,
+      "y": 4,
+      "z": 0,
+      "faces": [
+        "px",
+        "nx"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-5"
+      ]
+    },
+    {
+      "id": "pipe-26",
+      "x": 13,
+      "y": 4,
+      "z": 0,
+      "faces": [
+        "px",
+        "nx"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-5"
+      ]
+    },
+    {
+      "id": "pipe-39",
+      "x": 31,
+      "y": 5,
+      "z": 4,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-7"
+      ]
+    },
+    {
+      "id": "pipe-40",
+      "x": 32,
+      "y": 5,
+      "z": 4,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-7"
+      ]
+    },
+    {
+      "id": "pipe-41",
+      "x": 33,
+      "y": 5,
+      "z": 4,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-7"
+      ]
+    },
+    {
+      "id": "pipe-42",
+      "x": 34,
+      "y": 5,
+      "z": 4,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-7"
+      ]
+    },
+    {
+      "id": "pipe-48",
+      "x": 31,
+      "y": 4,
+      "z": 4,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-7"
+      ]
+    },
+    {
+      "id": "pipe-49",
+      "x": 32,
+      "y": 4,
+      "z": 4,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-7"
+      ]
+    },
+    {
+      "id": "pipe-50",
+      "x": 33,
+      "y": 4,
+      "z": 4,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-7"
+      ]
+    },
+    {
+      "id": "pipe-51",
+      "x": 34,
+      "y": 4,
+      "z": 4,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-7"
+      ]
+    },
+    {
+      "id": "pipe-68",
+      "x": 13,
+      "y": 10,
+      "z": 0,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-5",
+        "object-6"
+      ]
+    },
+    {
+      "id": "pipe-69",
+      "x": 14,
+      "y": 10,
+      "z": 0,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-5",
+        "object-6"
+      ]
+    },
+    {
+      "id": "pipe-70",
+      "x": 15,
+      "y": 10,
+      "z": 0,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-5",
+        "object-6"
+      ]
+    },
+    {
+      "id": "pipe-71",
+      "x": 16,
+      "y": 10,
+      "z": 0,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-5",
+        "object-6"
+      ]
+    },
+    {
+      "id": "pipe-83",
+      "x": 16,
+      "y": 9,
+      "z": 0,
+      "faces": [
+        "px",
+        "nx"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-5"
+      ]
+    },
+    {
+      "id": "pipe-84",
+      "x": 15,
+      "y": 9,
+      "z": 0,
+      "faces": [
+        "px",
+        "nx"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-5"
+      ]
+    },
+    {
+      "id": "pipe-85",
+      "x": 14,
+      "y": 9,
+      "z": 0,
+      "faces": [
+        "px",
+        "nx"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-5"
+      ]
+    },
+    {
+      "id": "pipe-86",
+      "x": 13,
+      "y": 9,
+      "z": 0,
+      "faces": [
+        "px",
+        "nx"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-5"
+      ]
+    },
+    {
+      "id": "pipe-99",
+      "x": 31,
+      "y": 10,
+      "z": 4,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-7"
+      ]
+    },
+    {
+      "id": "pipe-100",
+      "x": 32,
+      "y": 10,
+      "z": 4,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-7"
+      ]
+    },
+    {
+      "id": "pipe-101",
+      "x": 33,
+      "y": 10,
+      "z": 4,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-7"
+      ]
+    },
+    {
+      "id": "pipe-102",
+      "x": 34,
+      "y": 10,
+      "z": 4,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-7"
+      ]
+    },
+    {
+      "id": "pipe-108",
+      "x": 31,
+      "y": 9,
+      "z": 4,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-7"
+      ]
+    },
+    {
+      "id": "pipe-109",
+      "x": 32,
+      "y": 9,
+      "z": 4,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-7"
+      ]
+    },
+    {
+      "id": "pipe-110",
+      "x": 33,
+      "y": 9,
+      "z": 4,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-7"
+      ]
+    },
+    {
+      "id": "pipe-111",
+      "x": 34,
+      "y": 9,
+      "z": 4,
+      "faces": [
+        "nx",
+        "px"
+      ],
+      "rackIds": [
+        "object-6",
+        "object-7"
+      ]
+    }
+  ],
+  "player": {
+    "x": 1.5,
+    "y": 1.5,
+    "angle": 0
+  },
+  "objects": [
+    {
+      "id": "object-5",
+      "type": "frame",
+      "x": 3,
+      "y": 3,
+      "z": 0,
+      "rotation": 0,
+      "width": 10,
+      "depth": 8,
+      "height": 8,
+      "shelves": [
+        {
+          "id": "shelf-1",
+          "z": 0,
+          "height": 4
+        },
+        {
+          "id": "shelf-2",
+          "z": 4,
+          "height": 4
+        }
+      ],
+      "mount": "floor",
+      "nextItemId": 5,
+      "children": [
+        {
+          "id": "item-1",
+          "type": "tank",
+          "x": 1,
+          "y": 1,
+          "z": 0,
+          "rotation": 0,
+          "shelfId": "shelf-1",
+          "width": 2,
+          "depth": 2,
+          "height": 4,
+          "ports": [
+            {
+              "id": "port-1",
+              "kind": "output",
+              "face": "px",
+              "u": 1,
+              "v": 0,
+              "resources": [
+                "crude"
+              ]
+            }
+          ],
+          "nextPortId": 2
+        },
+        {
+          "id": "item-2",
+          "type": "tank",
+          "x": 5,
+          "y": 1,
+          "z": 4,
+          "rotation": 0,
+          "shelfId": "shelf-2",
+          "width": 2,
+          "depth": 2,
+          "height": 4,
+          "ports": [
+            {
+              "id": "port-1",
+              "kind": "input",
+              "face": "px",
+              "u": 1,
+              "v": 0,
+              "resources": [
+                "sludge"
+              ]
+            }
+          ],
+          "nextPortId": 2
+        },
+        {
+          "id": "item-3",
+          "type": "tank",
+          "x": 1,
+          "y": 6,
+          "z": 0,
+          "rotation": 0,
+          "shelfId": "shelf-1",
+          "width": 2,
+          "depth": 2,
+          "height": 4,
+          "ports": [
+            {
+              "id": "port-1",
+              "kind": "output",
+              "face": "px",
+              "u": 1,
+              "v": 0,
+              "resources": [
+                "crude"
+              ]
+            }
+          ],
+          "nextPortId": 2
+        },
+        {
+          "id": "item-4",
+          "type": "tank",
+          "x": 5,
+          "y": 6,
+          "z": 4,
+          "rotation": 0,
+          "shelfId": "shelf-2",
+          "width": 2,
+          "depth": 2,
+          "height": 4,
+          "ports": [
+            {
+              "id": "port-1",
+              "kind": "input",
+              "face": "px",
+              "u": 1,
+              "v": 0,
+              "resources": [
+                "sludge"
+              ]
+            }
+          ],
+          "nextPortId": 2
+        }
+      ],
+      "pipes": [
+        {
+          "id": "pipe-1",
+          "x": 3,
+          "y": 2,
+          "z": 0,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-2",
+          "x": 4,
+          "y": 2,
+          "z": 0,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-3",
+          "x": 5,
+          "y": 2,
+          "z": 0,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-4",
+          "x": 6,
+          "y": 2,
+          "z": 0,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-5",
+          "x": 7,
+          "y": 2,
+          "z": 0,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-6",
+          "x": 8,
+          "y": 2,
+          "z": 0,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-7",
+          "x": 9,
+          "y": 2,
+          "z": 0,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-27",
+          "x": 9,
+          "y": 1,
+          "z": 0,
+          "faces": [
+            "px",
+            "nx"
+          ]
+        },
+        {
+          "id": "pipe-28",
+          "x": 8,
+          "y": 1,
+          "z": 0,
+          "faces": [
+            "px",
+            "pz"
+          ]
+        },
+        {
+          "id": "pipe-29",
+          "x": 8,
+          "y": 1,
+          "z": 1,
+          "faces": [
+            "nz",
+            "py"
+          ]
+        },
+        {
+          "id": "pipe-30",
+          "x": 8,
+          "y": 2,
+          "z": 1,
+          "faces": [
+            "ny",
+            "pz"
+          ]
+        },
+        {
+          "id": "pipe-31",
+          "x": 8,
+          "y": 2,
+          "z": 2,
+          "faces": [
+            "nz",
+            "pz"
+          ]
+        },
+        {
+          "id": "pipe-32",
+          "x": 8,
+          "y": 2,
+          "z": 3,
+          "faces": [
+            "nz",
+            "pz"
+          ]
+        },
+        {
+          "id": "pipe-33",
+          "x": 8,
+          "y": 2,
+          "z": 4,
+          "faces": [
+            "nz",
+            "nx"
+          ]
+        },
+        {
+          "id": "pipe-34",
+          "x": 7,
+          "y": 2,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-61",
+          "x": 3,
+          "y": 7,
+          "z": 0,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-62",
+          "x": 4,
+          "y": 7,
+          "z": 0,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-63",
+          "x": 5,
+          "y": 7,
+          "z": 0,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-64",
+          "x": 6,
+          "y": 7,
+          "z": 0,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-65",
+          "x": 7,
+          "y": 7,
+          "z": 0,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-66",
+          "x": 8,
+          "y": 7,
+          "z": 0,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-67",
+          "x": 9,
+          "y": 7,
+          "z": 0,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-87",
+          "x": 9,
+          "y": 6,
+          "z": 0,
+          "faces": [
+            "px",
+            "nx"
+          ]
+        },
+        {
+          "id": "pipe-88",
+          "x": 8,
+          "y": 6,
+          "z": 0,
+          "faces": [
+            "px",
+            "pz"
+          ]
+        },
+        {
+          "id": "pipe-89",
+          "x": 8,
+          "y": 6,
+          "z": 1,
+          "faces": [
+            "nz",
+            "py"
+          ]
+        },
+        {
+          "id": "pipe-90",
+          "x": 8,
+          "y": 7,
+          "z": 1,
+          "faces": [
+            "ny",
+            "pz"
+          ]
+        },
+        {
+          "id": "pipe-91",
+          "x": 8,
+          "y": 7,
+          "z": 2,
+          "faces": [
+            "nz",
+            "pz"
+          ]
+        },
+        {
+          "id": "pipe-92",
+          "x": 8,
+          "y": 7,
+          "z": 3,
+          "faces": [
+            "nz",
+            "pz"
+          ]
+        },
+        {
+          "id": "pipe-93",
+          "x": 8,
+          "y": 7,
+          "z": 4,
+          "faces": [
+            "nz",
+            "nx"
+          ]
+        },
+        {
+          "id": "pipe-94",
+          "x": 7,
+          "y": 7,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "object-6",
+      "type": "frame",
+      "x": 17,
+      "y": 3,
+      "z": 0,
+      "rotation": 0,
+      "width": 14,
+      "depth": 8,
+      "height": 8,
+      "shelves": [
+        {
+          "id": "shelf-1",
+          "z": 0,
+          "height": 4
+        },
+        {
+          "id": "shelf-2",
+          "z": 4,
+          "height": 4
+        }
+      ],
+      "mount": "floor",
+      "nextItemId": 5,
+      "children": [
+        {
+          "id": "item-1",
+          "type": "filter",
+          "x": 2,
+          "y": 1,
+          "z": 0,
+          "rotation": 0,
+          "shelfId": "shelf-1",
+          "width": 2,
+          "depth": 2,
+          "height": 3,
+          "ports": [
+            {
+              "id": "port-1",
+              "kind": "input",
+              "face": "nx",
+              "u": 1,
+              "v": 0,
+              "resources": [
+                "crude"
+              ]
+            },
+            {
+              "id": "port-2",
+              "kind": "output",
+              "face": "pz",
+              "u": 0,
+              "v": 1,
+              "resources": [
+                "filtered"
+              ]
+            },
+            {
+              "id": "port-3",
+              "kind": "output",
+              "face": "nx",
+              "u": 0,
+              "v": 0,
+              "resources": [
+                "sludge"
+              ]
+            }
+          ],
+          "nextPortId": 4
+        },
+        {
+          "id": "item-2",
+          "type": "centrifuge",
+          "x": 8,
+          "y": 1,
+          "z": 4,
+          "rotation": 0,
+          "shelfId": "shelf-2",
+          "width": 2,
+          "depth": 2,
+          "height": 3,
+          "ports": [
+            {
+              "id": "port-1",
+              "kind": "input",
+              "face": "nx",
+              "u": 1,
+              "v": 0,
+              "resources": [
+                "filtered"
+              ]
+            },
+            {
+              "id": "port-2",
+              "kind": "output",
+              "face": "px",
+              "u": 1,
+              "v": 0,
+              "resources": [
+                "clean"
+              ]
+            },
+            {
+              "id": "port-3",
+              "kind": "output",
+              "face": "px",
+              "u": 0,
+              "v": 0,
+              "resources": [
+                "residue"
+              ]
+            }
+          ],
+          "nextPortId": 4
+        },
+        {
+          "id": "item-3",
+          "type": "filter",
+          "x": 2,
+          "y": 6,
+          "z": 0,
+          "rotation": 0,
+          "shelfId": "shelf-1",
+          "width": 2,
+          "depth": 2,
+          "height": 3,
+          "ports": [
+            {
+              "id": "port-1",
+              "kind": "input",
+              "face": "nx",
+              "u": 1,
+              "v": 0,
+              "resources": [
+                "crude"
+              ]
+            },
+            {
+              "id": "port-2",
+              "kind": "output",
+              "face": "pz",
+              "u": 0,
+              "v": 1,
+              "resources": [
+                "filtered"
+              ]
+            },
+            {
+              "id": "port-3",
+              "kind": "output",
+              "face": "nx",
+              "u": 0,
+              "v": 0,
+              "resources": [
+                "sludge"
+              ]
+            }
+          ],
+          "nextPortId": 4
+        },
+        {
+          "id": "item-4",
+          "type": "centrifuge",
+          "x": 8,
+          "y": 6,
+          "z": 4,
+          "rotation": 0,
+          "shelfId": "shelf-2",
+          "width": 2,
+          "depth": 2,
+          "height": 3,
+          "ports": [
+            {
+              "id": "port-1",
+              "kind": "input",
+              "face": "nx",
+              "u": 1,
+              "v": 0,
+              "resources": [
+                "filtered"
+              ]
+            },
+            {
+              "id": "port-2",
+              "kind": "output",
+              "face": "px",
+              "u": 1,
+              "v": 0,
+              "resources": [
+                "clean"
+              ]
+            },
+            {
+              "id": "port-3",
+              "kind": "output",
+              "face": "px",
+              "u": 0,
+              "v": 0,
+              "resources": [
+                "residue"
+              ]
+            }
+          ],
+          "nextPortId": 4
+        }
+      ],
+      "pipes": [
+        {
+          "id": "pipe-12",
+          "x": 0,
+          "y": 2,
+          "z": 0,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-13",
+          "x": 1,
+          "y": 2,
+          "z": 0,
+          "faces": [
+            "px",
+            "nx"
+          ]
+        },
+        {
+          "id": "pipe-14",
+          "x": 2,
+          "y": 2,
+          "z": 3,
+          "faces": [
+            "nz",
+            "pz"
+          ]
+        },
+        {
+          "id": "pipe-15",
+          "x": 2,
+          "y": 2,
+          "z": 4,
+          "faces": [
+            "nz",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-16",
+          "x": 3,
+          "y": 2,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-17",
+          "x": 4,
+          "y": 2,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-18",
+          "x": 5,
+          "y": 2,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-19",
+          "x": 6,
+          "y": 2,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-20",
+          "x": 7,
+          "y": 2,
+          "z": 4,
+          "faces": [
+            "px",
+            "nx"
+          ]
+        },
+        {
+          "id": "pipe-21",
+          "x": 1,
+          "y": 1,
+          "z": 0,
+          "faces": [
+            "px",
+            "nx"
+          ]
+        },
+        {
+          "id": "pipe-22",
+          "x": 0,
+          "y": 1,
+          "z": 0,
+          "faces": [
+            "px",
+            "nx"
+          ]
+        },
+        {
+          "id": "pipe-35",
+          "x": 10,
+          "y": 2,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-36",
+          "x": 11,
+          "y": 2,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-37",
+          "x": 12,
+          "y": 2,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-38",
+          "x": 13,
+          "y": 2,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-44",
+          "x": 10,
+          "y": 1,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-45",
+          "x": 11,
+          "y": 1,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-46",
+          "x": 12,
+          "y": 1,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-47",
+          "x": 13,
+          "y": 1,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-72",
+          "x": 0,
+          "y": 7,
+          "z": 0,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-73",
+          "x": 1,
+          "y": 7,
+          "z": 0,
+          "faces": [
+            "px",
+            "nx"
+          ]
+        },
+        {
+          "id": "pipe-74",
+          "x": 2,
+          "y": 7,
+          "z": 3,
+          "faces": [
+            "nz",
+            "pz"
+          ]
+        },
+        {
+          "id": "pipe-75",
+          "x": 2,
+          "y": 7,
+          "z": 4,
+          "faces": [
+            "nz",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-76",
+          "x": 3,
+          "y": 7,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-77",
+          "x": 4,
+          "y": 7,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-78",
+          "x": 5,
+          "y": 7,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-79",
+          "x": 6,
+          "y": 7,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-80",
+          "x": 7,
+          "y": 7,
+          "z": 4,
+          "faces": [
+            "px",
+            "nx"
+          ]
+        },
+        {
+          "id": "pipe-81",
+          "x": 1,
+          "y": 6,
+          "z": 0,
+          "faces": [
+            "px",
+            "nx"
+          ]
+        },
+        {
+          "id": "pipe-82",
+          "x": 0,
+          "y": 6,
+          "z": 0,
+          "faces": [
+            "px",
+            "nx"
+          ]
+        },
+        {
+          "id": "pipe-95",
+          "x": 10,
+          "y": 7,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-96",
+          "x": 11,
+          "y": 7,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-97",
+          "x": 12,
+          "y": 7,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-98",
+          "x": 13,
+          "y": 7,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-104",
+          "x": 10,
+          "y": 6,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-105",
+          "x": 11,
+          "y": 6,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-106",
+          "x": 12,
+          "y": 6,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-107",
+          "x": 13,
+          "y": 6,
+          "z": 4,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "object-7",
+      "type": "frame",
+      "x": 35,
+      "y": 3,
+      "z": 0,
+      "rotation": 0,
+      "width": 10,
+      "depth": 8,
+      "height": 8,
+      "shelves": [
+        {
+          "id": "shelf-1",
+          "z": 0,
+          "height": 4
+        },
+        {
+          "id": "shelf-2",
+          "z": 4,
+          "height": 4
+        }
+      ],
+      "mount": "floor",
+      "nextItemId": 5,
+      "children": [
+        {
+          "id": "item-1",
+          "type": "tank",
+          "x": 1,
+          "y": 1,
+          "z": 4,
+          "rotation": 0,
+          "shelfId": "shelf-2",
+          "width": 2,
+          "depth": 2,
+          "height": 4,
+          "ports": [
+            {
+              "id": "port-1",
+              "kind": "input",
+              "face": "nx",
+              "u": 1,
+              "v": 0,
+              "resources": [
+                "clean"
+              ]
+            }
+          ],
+          "nextPortId": 2
+        },
+        {
+          "id": "item-2",
+          "type": "tank",
+          "x": 5,
+          "y": 1,
+          "z": 0,
+          "rotation": 0,
+          "shelfId": "shelf-1",
+          "width": 2,
+          "depth": 2,
+          "height": 4,
+          "ports": [
+            {
+              "id": "port-1",
+              "kind": "input",
+              "face": "nx",
+              "u": 0,
+              "v": 0,
+              "resources": [
+                "residue"
+              ]
+            }
+          ],
+          "nextPortId": 2
+        },
+        {
+          "id": "item-3",
+          "type": "tank",
+          "x": 1,
+          "y": 6,
+          "z": 4,
+          "rotation": 0,
+          "shelfId": "shelf-2",
+          "width": 2,
+          "depth": 2,
+          "height": 4,
+          "ports": [
+            {
+              "id": "port-1",
+              "kind": "input",
+              "face": "nx",
+              "u": 1,
+              "v": 0,
+              "resources": [
+                "clean"
+              ]
+            }
+          ],
+          "nextPortId": 2
+        },
+        {
+          "id": "item-4",
+          "type": "tank",
+          "x": 5,
+          "y": 6,
+          "z": 0,
+          "rotation": 0,
+          "shelfId": "shelf-1",
+          "width": 2,
+          "depth": 2,
+          "height": 4,
+          "ports": [
+            {
+              "id": "port-1",
+              "kind": "input",
+              "face": "nx",
+              "u": 0,
+              "v": 0,
+              "resources": [
+                "residue"
+              ]
+            }
+          ],
+          "nextPortId": 2
+        }
+      ],
+      "pipes": [
+        {
+          "id": "pipe-43",
+          "x": 0,
+          "y": 2,
+          "z": 4,
+          "faces": [
+            "px",
+            "nx"
+          ]
+        },
+        {
+          "id": "pipe-52",
+          "x": 0,
+          "y": 1,
+          "z": 4,
+          "faces": [
+            "nx",
+            "nz"
+          ]
+        },
+        {
+          "id": "pipe-53",
+          "x": 0,
+          "y": 1,
+          "z": 3,
+          "faces": [
+            "pz",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-54",
+          "x": 1,
+          "y": 1,
+          "z": 3,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-55",
+          "x": 2,
+          "y": 1,
+          "z": 3,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-56",
+          "x": 3,
+          "y": 1,
+          "z": 3,
+          "faces": [
+            "nx",
+            "nz"
+          ]
+        },
+        {
+          "id": "pipe-57",
+          "x": 3,
+          "y": 1,
+          "z": 2,
+          "faces": [
+            "pz",
+            "nz"
+          ]
+        },
+        {
+          "id": "pipe-58",
+          "x": 3,
+          "y": 1,
+          "z": 1,
+          "faces": [
+            "pz",
+            "nz"
+          ]
+        },
+        {
+          "id": "pipe-59",
+          "x": 3,
+          "y": 1,
+          "z": 0,
+          "faces": [
+            "pz",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-60",
+          "x": 4,
+          "y": 1,
+          "z": 0,
+          "faces": [
+            "px",
+            "nx"
+          ]
+        },
+        {
+          "id": "pipe-103",
+          "x": 0,
+          "y": 7,
+          "z": 4,
+          "faces": [
+            "px",
+            "nx"
+          ]
+        },
+        {
+          "id": "pipe-112",
+          "x": 0,
+          "y": 6,
+          "z": 4,
+          "faces": [
+            "nx",
+            "nz"
+          ]
+        },
+        {
+          "id": "pipe-113",
+          "x": 0,
+          "y": 6,
+          "z": 3,
+          "faces": [
+            "pz",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-114",
+          "x": 1,
+          "y": 6,
+          "z": 3,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-115",
+          "x": 2,
+          "y": 6,
+          "z": 3,
+          "faces": [
+            "nx",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-116",
+          "x": 3,
+          "y": 6,
+          "z": 3,
+          "faces": [
+            "nx",
+            "nz"
+          ]
+        },
+        {
+          "id": "pipe-117",
+          "x": 3,
+          "y": 6,
+          "z": 2,
+          "faces": [
+            "pz",
+            "nz"
+          ]
+        },
+        {
+          "id": "pipe-118",
+          "x": 3,
+          "y": 6,
+          "z": 1,
+          "faces": [
+            "pz",
+            "nz"
+          ]
+        },
+        {
+          "id": "pipe-119",
+          "x": 3,
+          "y": 6,
+          "z": 0,
+          "faces": [
+            "pz",
+            "px"
+          ]
+        },
+        {
+          "id": "pipe-120",
+          "x": 4,
+          "y": 6,
+          "z": 0,
+          "faces": [
+            "px",
+            "nx"
+          ]
+        }
+      ]
+    }
+  ]
+}

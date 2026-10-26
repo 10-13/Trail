@@ -2,7 +2,7 @@ import { makeShelves, shelvesOf } from './shelves.js';
 import { createSimulationRunner } from './simulation-runner.js';
 import { ensureSimulation, simulationTick, pipeTokens } from './simulation.js';
 import { createSimulationControls, createProductionInspector, drawProductionGlyph } from './production-ui.js';
-import { createProductionDemo } from './production-demo.js';
+import { createProductionDemo, createFactoryDemo } from './production-demo.js';
 import { WAGON, PLAYER, TYPES, EQUIPMENT, dimensions, worldEquipment, createState, placementError, putObject, removeObject, movePlayer, serialize, deserialize, removePipe, findPipe, updatePipeFaces } from './core.js';
 import { rotateObject } from './geometry.js';
 import { createFrameEditor } from './frame-editor.js';
@@ -46,10 +46,10 @@ const productionInspector=createProductionInspector($('world-production'),{getSt
 function refreshSimulation(){simulationControls.refresh();productionInspector.refresh();frameEditor.tick();}
 function simulationChanged(){simulationRunner.reset();markDirty();refreshSimulation();}
 function stepSimulation(){simulationRunner.reset();simulationTick(state);markDirty();refreshSimulation();}
-function toggleDemo(){
+function toggleDemo(kind='simple'){
   if(frameEditor.isOpen)frameEditor.close();
-  if(demoBackup){const backup=demoBackup;demoBackup=null;try{sessionStorage.removeItem('trail.production.backup');}catch{}restore(backup,'Твоя схема восстановлена');toast('Твоя схема восстановлена');}
-  else{demoBackup=serialize(state);try{sessionStorage.setItem('trail.production.backup',demoBackup);}catch{}state=createProductionDemo();selectedId=null;selectedPipeId=null;ghost=null;erase=false;buildMenuOpen=false;simulationRunner.reset();updateUI();frameEditor.open(state.objects[0].id);toast('128 нефти → фильтр → центрифуга → бак. Нажми «Пуск». «Вернуть схему» возвращает твою компоновку.');}
+  if(demoBackup&&kind!=='factory'){const backup=demoBackup;demoBackup=null;try{sessionStorage.removeItem('trail.production.backup');}catch{}restore(backup,'Твоя схема восстановлена');toast('Твоя схема восстановлена');}
+  else{if(!demoBackup){demoBackup=serialize(state);try{sessionStorage.setItem('trail.production.backup',demoBackup);}catch{}}state=kind==='factory'?createFactoryDemo():createProductionDemo();selectedId=null;selectedPipeId=null;ghost=null;erase=false;buildMenuOpen=false;simulationRunner.reset();updateUI();frameEditor.open(state.objects[kind==='factory'?1:0].id);toast(kind==='factory'?'Две линии · три стеллажа. Снизу фильтры, сверху центрифуги. Нажми «Пуск».':'128 нефти → фильтр → центрифуга → бак. Нажми «Пуск». «Вернуть схему» возвращает твою компоновку.');}
   markDirty();refreshSimulation();
 }
 const rotationAxis = createRotationControl($('world-rotation'), rotate);
