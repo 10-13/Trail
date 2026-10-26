@@ -1,4 +1,5 @@
 import { createRackOverview } from './rack-overview.js';
+import { rackView as rackProjection } from './rack-view.js';
 import { ensureSimulation, pipeTokens, collectResources } from './simulation.js';
 import { createSimulationControls, createProductionInspector, drawProductionGlyph } from './production-ui.js';
 import { EQUIPMENT, dimensions, localSize, equipmentPlacementError, putEquipment, removeEquipment, setFrameShelves, updatePorts, putPipe, pipePlacementError, paintPipeRoute, removePipe, findPipe, updatePipeFaces, connectEndpoints, connectShelfLevels, removePipeColumn, pipeColumnIds } from './core.js';
@@ -48,7 +49,7 @@ export function createFrameEditor({getState,onChange,onClose,onSimulationStep,on
   connect.onclick=()=>{const a=ownConnections.find(p=>p.id===ownSelect.value),b=nearby.find(p=>p.id===neighborSelect.value);if(a&&b){const error=connectEndpoints(getState(),toWorld(a),toWorld(b));if(error)message(error,true);else{changed();message('Соединение проложено');}}};
   function refreshNeighbors(){
     nearby=neighboringConnections(getState(),frame());ownConnections=portsInFrame(getState(),frame()).filter(p=>p.frameId===frameId&&onShelf(p.cell.z));
-    ownConnections.push(...openPipeEnds(getState()).map(p=>({...p,cell:localCell(frame(),p.cell),neighbor:localCell(frame(),p.neighbor),face:localFace(frame(),p.face)})).filter(p=>p.cell.x>=0&&p.cell.y>=0&&p.cell.x<view.width&&p.cell.y<view.height&&onShelf(p.cell.z)));
+    ownConnections.push(...openPipeEnds(getState()).map(p=>({...p,cell:localCell(frame(),p.cell),neighbor:localCell(frame(),p.neighbor),face:localFace(frame(),p.face)})).filter(p=>p.cell.x>=0&&p.cell.y>=0&&p.cell.x<localSize(frame()).width&&p.cell.y<localSize(frame()).depth&&onShelf(p.cell.z)));
     neighborSummary.textContent=`Соседние подключения · ${nearby.length}`;
     for(const [select,points]of [[ownSelect,ownConnections],[neighborSelect,nearby]]){const previous=select.value;select.replaceChildren();for(const p of points){const option=el('option','',`${p.label} · ${p.kind==='input'?'вход':p.kind==='output'?'выход':'труба'} · ${meter(p.cell.z)} м`);option.value=p.id;select.append(option);}if(points.some(p=>p.id===previous))select.value=previous;}
     connect.disabled=!nearby.length||!ownConnections.length;
@@ -63,7 +64,7 @@ export function createFrameEditor({getState,onChange,onClose,onSimulationStep,on
   function refresh(){
     if(!frame())return;
     const all=shelvesOf(frame());if(!all.some(s=>s.id===shelfId))shelfId=all[0].id;
-    const active=shelf(),size=localSize(frame()),usage=shelfUsage(frame(),active,localPipes());view.width=size.width;view.height=size.depth;
+    const active=shelf(),size=localSize(frame()),usage=shelfUsage(frame(),active,localPipes());view.width=dimensions(frame()).width;view.height=dimensions(frame()).depth;
     $('rack-title').textContent=`Стеллаж ${frameId.slice(7)}`;
     for(const select of [$('shelf-select'),$('item-shelf-select')]){select.replaceChildren();for(const [i,s]of all.entries()){const option=el('option','',`Полка ${i+1} · ${meter(s.height)} м`);option.value=s.id;select.append(option);}select.value=select.id==='shelf-select'?active.id:(selected()?.shelfId||shelfForItem(frame(),selected()||{z:active.z,type:'pipe'})?.id||active.id);}
     $('shelf-usage').textContent=`Высота ${meter(active.height)} м · свободно ${usage.free} / ${usage.total} ячеек`;
@@ -111,7 +112,7 @@ export function createFrameEditor({getState,onChange,onClose,onSimulationStep,on
     if(movingId){selectedId=movingId;brush=draft=null;movingId=null;stroke=null;}
     changed();message('Установлено');
   }
-  function point(event){const r=canvas.getBoundingClientRect();return{x:(event.clientX-r.left-view.ox)/view.scale,y:(event.clientY-r.top-view.oy)/view.scale};}
+  function point(event){const r=canvas.getBoundingClientRect();return rackProjection(frame()).unproject({x:(event.clientX-r.left-view.ox)/view.scale,y:(event.clientY-r.top-view.oy)/view.scale});}
   canvas.addEventListener('pointerdown',event=>{
     if(event.button!==0&&event.button!==1)return;event.preventDefault();canvas.focus();pointer=point(event);
     if(event.button===1){drag={kind:'pan',start:{x:event.clientX,y:event.clientY},pan:{...pan},pointerId:event.pointerId};canvas.setPointerCapture(event.pointerId);return;}
@@ -132,7 +133,7 @@ export function createFrameEditor({getState,onChange,onClose,onSimulationStep,on
   function endPointer(event){if(drag?.kind==='item'&&draft){const error=putEquipment(getState(),frameId,draft,selectedId);if(error)message(error,true);else{onChange();message('Блок перемещён');}}drag=null;draft=null;stroke=null;if(!continueAnchor)pipeAnchor=null;if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);refresh();}
   canvas.addEventListener('pointerup',endPointer);canvas.addEventListener('pointercancel',()=>{cancelGesture();draw();});canvas.addEventListener('lostpointercapture',()=>{if(drag||stroke){cancelGesture();draw();}});canvas.addEventListener('pointerleave',()=>{if(!drag&&!stroke){draft=null;draw();}});canvas.addEventListener('contextmenu',event=>{event.preventDefault();clearTool();});
   function cancelGesture(){const id=drag?.pointerId||stroke?.pointerId;drag=stroke=draft=null;if(id!==undefined&&canvas.hasPointerCapture(id))canvas.releasePointerCapture(id);}
-  function setZoom(value,anchor=null){const old=view.scale;zoom=Math.max(.5,Math.min(6,value));draw();if(anchor){pan.x+=(anchor.x-view.width/2)*(old-view.scale);pan.y+=(anchor.y-view.height/2)*(old-view.scale);draw();}}
+  function setZoom(value,anchor=null){const old=view.scale;zoom=Math.max(.5,Math.min(6,value));draw();if(anchor){anchor=rackProjection(frame()).point(anchor);pan.x+=(anchor.x-view.width/2)*(old-view.scale);pan.y+=(anchor.y-view.height/2)*(old-view.scale);draw();}}
   canvas.addEventListener('wheel',event=>{event.preventDefault();setZoom(zoom*(event.deltaY<0?1.2:1/1.2),point(event));},{passive:false});
   $('shelf-zoom-in').onclick=()=>setZoom(zoom*1.35);$('shelf-zoom-out').onclick=()=>setZoom(zoom/1.35);$('shelf-fit').onclick=()=>{zoom=1;pan={x:0,y:0};draw();};
   function rotate(){const axis=rotationAxis();if(brush?.type==='pipe'){brush.faces=brush.faces.map(f=>rotateFace(f,rotateObject({rotation:0},axis)));updateDraft();refresh();return;}if(brush&&brush.type!=='riser'&&brush.type!=='connect'){brush=rotateObject(brush,axis);updateDraft();refresh();return;}if(selectedPipeId){const error=applyFaces(selectedPipe().faces.map(f=>rotateFace(f,rotateObject({rotation:0},axis))));if(error)message(error,true);else changed();return;}const item=selected();if(item){const error=putEquipment(getState(),frameId,{...rotateObject(item,axis),z:shelf().z,shelfId},item.id);if(error)message(error,true);else changed();}}
@@ -147,9 +148,9 @@ export function createFrameEditor({getState,onChange,onClose,onSimulationStep,on
   function draw(){
     if(screen.hidden||!frame())return;if(rackView==='overview'){overview.refresh();return;}const area=canvas.getBoundingClientRect();if(!area.width||!area.height)return;
     const dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(area.width*dpr);canvas.height=Math.round(area.height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);
-    const size=localSize(frame());view.width=size.width;view.height=size.depth;view.scale=Math.max(2,Math.min((area.width-64)/size.width,(area.height-64)/size.depth)*zoom);view.ox=(area.width-size.width*view.scale)/2+pan.x;view.oy=(area.height-size.depth*view.scale)/2+pan.y;
+    const projection=rackProjection(frame()),size=projection.size;view.width=size.width;view.height=size.depth;view.scale=Math.max(2,Math.min((area.width-64)/size.width,(area.height-64)/size.depth)*zoom);view.ox=(area.width-size.width*view.scale)/2+pan.x;view.oy=(area.height-size.depth*view.scale)/2+pan.y;
     const {scale,ox,oy}=view,right=ox+size.width*scale,bottom=oy+size.depth*scale;
-    ctx.fillStyle='#111c23';ctx.fillRect(0,0,area.width,area.height);ctx.fillStyle='#16232a';ctx.fillRect(ox,oy,size.width*scale,size.depth*scale);
+    ctx.fillStyle='#111c23';ctx.fillRect(0,0,area.width,area.height);ctx.fillStyle='#82959d';ctx.font='11px monospace';ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText('← Перед поезда',24,18);ctx.textBaseline='alphabetic';ctx.fillStyle='#16232a';ctx.fillRect(ox,oy,size.width*scale,size.depth*scale);
     ctx.strokeStyle='#34454d';ctx.lineWidth=.5;ctx.beginPath();for(let x=1;x<size.width;x++){ctx.moveTo(ox+x*scale,oy);ctx.lineTo(ox+x*scale,bottom);}for(let y=1;y<size.depth;y++){ctx.moveTo(ox,oy+y*scale);ctx.lineTo(right,oy+y*scale);}ctx.stroke();
     ctx.strokeStyle='#b9a270';ctx.lineWidth=1;ctx.strokeRect(ox,oy,size.width*scale,size.depth*scale);
     const objects=frame().children.filter(item=>item.z<shelf().z+shelf().height&&item.z+dimensions(item).height>shelf().z).sort((a,b)=>Number(a.id===selectedId)-Number(b.id===selectedId));
@@ -157,18 +158,18 @@ export function createFrameEditor({getState,onChange,onClose,onSimulationStep,on
     const allLocalPipes=localPipes(),pipeCells=new Map(allLocalPipes.map(p=>[`${p.x},${p.y},${p.z}`,p])),buckets=new Map();for(const p of allLocalPipes.filter(p=>onShelf(p.z))){const key=`${p.x},${p.y}`;if(!buckets.has(key))buckets.set(key,[]);buckets.get(key).push(p);}
     for(const list of buckets.values()){
       const p=list.find(p=>p.id===selectedPipeId)||list.find(p=>p.z===shelf().z)||list[0];
-      drawProjectedPipe(ctx,p,view,{highlight:list.some(p=>highlightedPipes.has(p.id)||p.id===selectedPipeId),contents:list.flatMap(p=>pipeTokens(getState(),p.id)).slice(0,4)});
+      drawProjectedPipe(ctx,projection.pipe(p),view,{highlight:list.some(p=>highlightedPipes.has(p.id)||p.id===selectedPipeId),contents:list.flatMap(p=>pipeTokens(getState(),p.id)).slice(0,4)});
       const up=list.some(p=>p.faces.includes('pz')&&p.z===shelf().z+shelf().height-1&&pipeCells.get(`${p.x},${p.y},${p.z+1}`)?.faces.includes('nz')),down=list.some(p=>p.faces.includes('nz')&&p.z===shelf().z&&pipeCells.get(`${p.x},${p.y},${p.z-1}`)?.faces.includes('pz'));
-      if(up||down){const x=ox+(p.x+.5)*scale,y=oy+(p.y+.5)*scale;ctx.fillStyle='#d6eee8';ctx.font=`bold ${Math.max(10,Math.min(16,scale*.5))}px monospace`;ctx.textAlign='center';ctx.fillText(up&&down?'↕':up?'↑':'↓',x,y+Math.min(6,scale*.2));}
+      if(up||down){const cell=projection.cell(p),x=ox+(cell.x+.5)*scale,y=oy+(cell.y+.5)*scale;ctx.fillStyle='#d6eee8';ctx.font=`bold ${Math.max(10,Math.min(16,scale*.5))}px monospace`;ctx.textAlign='center';ctx.fillText(up&&down?'↕':up?'↑':'↓',x,y+Math.min(6,scale*.2));}
     }
-    for(const port of portsInFrame(getState(),frame()).filter(p=>p.frameId===frameId&&onShelf(p.cell.z)))drawProjectedPort(ctx,port,view,port.attached||port.id===connectionStart?.id);
+    for(const port of portsInFrame(getState(),frame()).filter(p=>p.frameId===frameId&&onShelf(p.cell.z)))drawProjectedPort(ctx,projection.port(port),view,port.attached||port.id===connectionStart?.id);
     if(neighbors.open)for(const [index,port]of nearby.entries()){
-      const cell={...port.cell},vector=DIRECTIONS[port.face];cell.x=Math.max(-.5-vector[0]/2,Math.min(size.width-.5-vector[0]/2,cell.x));cell.y=Math.max(-.5-vector[1]/2,Math.min(size.depth-.5-vector[1]/2,cell.y));
-      ctx.save();ctx.globalAlpha=port.id===neighborSelect.value?1:.35;drawProjectedPort(ctx,{...port,cell},view,port.attached);ctx.fillStyle='#d3dcdf';ctx.font='10px monospace';ctx.textAlign='left';ctx.fillText(String(index+1),ox+(cell.x+.5)*scale+5,oy+(cell.y+.5)*scale-5);ctx.restore();
+      const cell={...port.cell},vector=DIRECTIONS[port.face];cell.x=Math.max(-.5-vector[0]/2,Math.min(localSize(frame()).width-.5-vector[0]/2,cell.x));cell.y=Math.max(-.5-vector[1]/2,Math.min(localSize(frame()).depth-.5-vector[1]/2,cell.y));
+      const displayed=projection.cell(cell);ctx.save();ctx.globalAlpha=port.id===neighborSelect.value?1:.35;drawProjectedPort(ctx,projection.port({...port,cell}),view,port.attached);ctx.fillStyle='#d3dcdf';ctx.font='10px monospace';ctx.textAlign='left';ctx.fillText(String(index+1),ox+(displayed.x+.5)*scale+5,oy+(displayed.y+.5)*scale-5);ctx.restore();
     }
-    if(draft){const error=draftError();if(draft.type==='pipe')drawProjectedPipe(ctx,draft,view,{preview:true,error:!!error});else if(draft.type==='riser'){const x=ox+draft.x*scale,y=oy+draft.y*scale;ctx.strokeStyle=error?'#ed8275':'#8ed8bf';ctx.lineWidth=2;ctx.strokeRect(x+2,y+2,scale-4,scale-4);ctx.fillStyle=ctx.strokeStyle;ctx.font=`${Math.max(12,scale*.55)}px monospace`;ctx.textAlign='center';ctx.fillText(draft.direction>0?'↑':'↓',x+scale/2,y+scale*.72);}else{const box=boxFor(draft);ctx.fillStyle=error?'#ed827540':'#8ed8bf40';ctx.strokeStyle=error?'#ed8275':'#8ed8bf';ctx.fillRect(box.x+1,box.y+1,box.width-2,box.height-2);ctx.strokeRect(box.x+1,box.y+1,box.width-2,box.height-2);}}
+    if(draft){const error=draftError();if(draft.type==='pipe')drawProjectedPipe(ctx,projection.pipe(draft),view,{preview:true,error:!!error});else if(draft.type==='riser'){const cell=projection.cell(draft),x=ox+cell.x*scale,y=oy+cell.y*scale;ctx.strokeStyle=error?'#ed8275':'#8ed8bf';ctx.lineWidth=2;ctx.strokeRect(x+2,y+2,scale-4,scale-4);ctx.fillStyle=ctx.strokeStyle;ctx.font=`${Math.max(12,scale*.55)}px monospace`;ctx.textAlign='center';ctx.fillText(draft.direction>0?'↑':'↓',x+scale/2,y+scale*.72);}else{const box=boxFor(draft);ctx.fillStyle=error?'#ed827540':'#8ed8bf40';ctx.strokeStyle=error?'#ed8275':'#8ed8bf';ctx.fillRect(box.x+1,box.y+1,box.width-2,box.height-2);ctx.strokeRect(box.x+1,box.y+1,box.width-2,box.height-2);}}
   }
-  function boxFor(item){const d=dimensions(item);return{x:view.ox+item.x*view.scale,y:view.oy+item.y*view.scale,width:d.width*view.scale,height:d.depth*view.scale};}
+  function boxFor(item){const projected=rackProjection(frame()).box(item),d=dimensions(projected);return{x:view.ox+projected.x*view.scale,y:view.oy+projected.y*view.scale,width:d.width*view.scale,height:d.depth*view.scale};}
   function close(){cancelGesture();overview.setVisible(false);screen.hidden=true;wagon.hidden=false;hud.hidden=false;document.body.dataset.screen='wagon';onClose();}
   $('close-frame-editor').onclick=close;
   window.addEventListener('keydown',event=>{

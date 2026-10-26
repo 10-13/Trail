@@ -32,6 +32,7 @@ def choose_world(page, kind):
 def shelf_geometry(page,current):
     if not page.locator('#shelf-canvas').is_visible():page.locator('#rack-view-plan').click()
     canvas=page.locator('#shelf-canvas')
+    page.evaluate('()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
     image=Image.open(BytesIO(base64.b64decode(canvas.evaluate("node=>node.toDataURL().split(',')[1]")))).convert('RGB')
     columns={};points=[]
     for index,(r,g,b)in enumerate(image.getdata()):
@@ -41,13 +42,19 @@ def shelf_geometry(page,current):
     edges=[x for x,n in columns.items()if n>=max(columns.values())*.45]
     left,right=min(edges),max(edges);rows=[y for x,y in points if x<=left+1 or x>=right-1]
     top,bottom=min(rows),max(rows);rect=canvas.bounding_box();dpr=image.width/rect['width']
-    scale=((right-left)/current['width']+(bottom-top)/current['depth'])/2/dpr
+    orientation=current.get('orientation',[[1,2,3],[2,-1,3],[-1,-2,3],[-2,1,3]][current.get('rotation',0)])
+    size=[0,0]
+    for axis,length in zip(orientation[:2],[current['width'],current['depth']]):size[abs(axis)-1]=length
+    scale=((right-left)/size[0]+(bottom-top)/size[1])/2/dpr
     return {'left':left/dpr+rect['x'],'top':top/dpr+rect['y'],'scale':scale}
 
 
 def shelf_point(page,current,x,y):
     geometry=shelf_geometry(page,current)
-    return geometry['left']+x*geometry['scale'],geometry['top']+y*geometry['scale']
+    orientation=current.get('orientation',[[1,2,3],[2,-1,3],[-1,-2,3],[-2,1,3]][current.get('rotation',0)])
+    point=[0,0]
+    for axis,length,value in zip(orientation[:2],[current['width'],current['depth']],[x,y]):point[abs(axis)-1]=value if axis>0 else length-value
+    return geometry['left']+point[0]*geometry['scale'],geometry['top']+point[1]*geometry['scale']
 
 def click_shelf(page,current,x,y):
     page.mouse.click(*shelf_point(page,current,x,y))

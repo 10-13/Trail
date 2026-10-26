@@ -1,4 +1,5 @@
-import { EQUIPMENT, dimensions, localSize } from './geometry.js';
+import { EQUIPMENT, dimensions } from './geometry.js';
+import { rackView } from './rack-view.js';
 import { shelvesOf, shelfForItem } from './shelves.js';
 import { DIRECTIONS } from './logistics.js';
 import { RESOURCES, pipeTokens } from './simulation.js';
@@ -6,7 +7,7 @@ import { el } from './ui.js';
 
 // Exploded-view geometry is presentation only: no construction coordinates change.
 export function rackOverviewLayout(frame,width,height,expansion={}) {
-  const size=localSize(frame),shelves=shelvesOf(frame),room=Math.max(60,width-150);
+  const size=rackView(frame).size,shelves=shelvesOf(frame),room=Math.max(60,width-150);
   const minimumFront=Math.min(120,room*.6),unit=Math.min(42,room/(size.width+size.depth*.45),(room-minimumFront)/(size.depth*.45));
   const frontWidth=Math.max(minimumFront,size.width*unit),dx=size.depth*unit*.45,dy=dx*.5;
   const base=shelves.map(s=>Math.max(28,s.height*unit)),extra=Math.min(110,Math.max(64,height*.17));
@@ -80,16 +81,17 @@ export function createRackOverview(host,{getFrame,getState,getSelected,onChoose}
     for(const s of shelves){const target=s.id===hovered?1:0,current=weights[s.id]||0,next=reduced.matches?target:current+(target-current)*(1-Math.exp(-dt/60));weights[s.id]=Math.abs(next-target)<.002?target:next;if(weights[s.id]!==target)moving=true;}
     const dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(rect.width*dpr);canvas.height=Math.round(rect.height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.fillStyle='#111c23';ctx.fillRect(0,0,rect.width,rect.height);ctx.fillStyle='#34454d66';for(let x=16;x<rect.width;x+=26)for(let y=16;y<rect.height;y+=26){ctx.beginPath();ctx.arc(x,y,.8,0,Math.PI*2);ctx.fill();}
+    ctx.fillStyle='#82959d';ctx.font='11px monospace';ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText('← Перед поезда',24,18);
     layout=rackOverviewLayout(frame,rect.width,Math.max(120,rect.height-30),weights);
-    const {project:p,size}=layout,top=size.height;
+    const {project:p,size}=layout,top=size.height,projection=rackView(frame);
     // Rear posts, then floors and contents, then the front posts.
     line(p(0,size.depth,0),p(0,size.depth,top));line(p(size.width,size.depth,0),p(size.width,size.depth,top));
     for(const floor of layout.floors){
       const activeShelf=floor.id===hovered,selected=floor.id===getSelected(),z=floor.z,color=activeShelf?'#e8b76b':selected?'#93b4c2':'#75898e';
       polygon([p(0,0,z),p(size.width,0,z),p(size.width,size.depth,z),p(0,size.depth,z)],activeShelf?'#93d7cf13':'#26343c55',color,activeShelf?2.2:1.5);
-      const objects=frame.children.filter(o=>shelfForItem(frame,o)?.id===floor.id).sort((a,b)=>b.y-a.y||a.x-b.x);
+      const objects=frame.children.filter(o=>shelfForItem(frame,o)?.id===floor.id).map(projection.box).sort((a,b)=>b.y-a.y||a.x-b.x);
       for(const item of objects)drawBox(item,floor);
-      for(const pipe of frame.pipes.filter(pipe=>pipe.z>=z&&pipe.z<z+floor.heightVoxels)){
+      for(const pipe of frame.pipes.filter(pipe=>pipe.z>=z&&pipe.z<z+floor.heightVoxels).map(projection.pipe)){
         const center=p(pipe.x+.5,pipe.y+.5,pipe.z+.14);for(const face of pipe.faces){const v=DIRECTIONS[face];line(center,p(pipe.x+.5+v[0]*.5,pipe.y+.5+v[1]*.5,Math.max(0,Math.min(size.height,pipe.z+.14+v[2]*.5))),'#77c8bc99',1.6);}
         const contents=pipeTokens(getState(),pipe.id);for(const [i,token]of contents.entries()){ctx.fillStyle=RESOURCES[token.resource].color;ctx.beginPath();ctx.arc(center.x+(i%2?2:-2),center.y+(i<2?-2:2),1.8,0,Math.PI*2);ctx.fill();}
       }
