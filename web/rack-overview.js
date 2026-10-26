@@ -21,7 +21,9 @@ export function rackOverviewLayout(frame,width,height,expansion={}) {
     const i=shelves.findIndex(s=>z<s.z+s.height),index=i<0?shelves.length-1:Math.max(0,i),floor=floors[index],s=shelves[index];
     return y-floor.bottom+(z-s.z)/s.height*floor.height;
   }
-  const project=(px,py,pz)=>({x:x+px/size.width*frontWidth-py/size.depth*dx,y:y-elevation(pz)-py/size.depth*dy});
+  // As in the shelf plan, increasing wagon Y goes towards the viewer (bottom).
+  // The near edge is Y=depth; Y=0 recedes into the rack.
+  const project=(px,py,pz)=>{const back=(size.depth-py)/size.depth;return{x:x+px/size.width*frontWidth-back*dx,y:y-elevation(pz)-back*dy};};
   return {x,y,dx,dy,frontWidth,unit,fit,maxExtra,floors,project,size};
 }
 function shelfOutline(layout,floor){
@@ -67,8 +69,8 @@ export function createRackOverview(host,{getFrame,getState,getSelected,onChoose}
   function polygon(points,fill,stroke='#70858a',lineWidth=1){ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();if(fill){ctx.fillStyle=fill;ctx.fill();}if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=lineWidth;ctx.stroke();}}
   function line(a,b,color='#829397',width=2){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke();}
   function drawBox(item,floor){
-    const {size,frontWidth,dx,dy}=layout,d=dimensions(item),x=item.x/size.width*frontWidth,depth=item.y/size.depth,z=(item.z-floor.z)/floor.heightVoxels;
-    const base={x:layout.x+x-depth*dx,y:floor.bottom-z*floor.base-depth*dy};
+    const {size,frontWidth,dx,dy}=layout,d=dimensions(item),z=(item.z-floor.z)/floor.heightVoxels;
+    const base=layout.project(item.x,item.y+d.depth,floor.z);base.y-=z*floor.base;
     const w=d.width/size.width*frontWidth,back={x:-d.depth/size.depth*dx,y:-d.depth/size.depth*dy},h=d.height/floor.heightVoxels*floor.base;
     const a=base,b={x:a.x+w,y:a.y},c={x:b.x+back.x,y:b.y+back.y},e={x:a.x+back.x,y:a.y+back.y};
     const top=p=>({x:p.x,y:p.y-h}),color=EQUIPMENT[item.type]?.color||'#93b4c2';
@@ -85,11 +87,11 @@ export function createRackOverview(host,{getFrame,getState,getSelected,onChoose}
     layout=rackOverviewLayout(frame,rect.width,Math.max(120,rect.height-30),weights);
     const {project:p,size}=layout,top=size.height,projection=rackView(frame);
     // Rear posts, then floors and contents, then the front posts.
-    line(p(0,size.depth,0),p(0,size.depth,top));line(p(size.width,size.depth,0),p(size.width,size.depth,top));
+    line(p(0,0,0),p(0,0,top));line(p(size.width,0,0),p(size.width,0,top));
     for(const floor of layout.floors){
       const activeShelf=floor.id===hovered,selected=floor.id===getSelected(),z=floor.z,color=activeShelf?'#e8b76b':selected?'#93b4c2':'#75898e';
       polygon([p(0,0,z),p(size.width,0,z),p(size.width,size.depth,z),p(0,size.depth,z)],activeShelf?'#93d7cf13':'#26343c55',color,activeShelf?2.2:1.5);
-      const objects=frame.children.filter(o=>shelfForItem(frame,o)?.id===floor.id).map(projection.box).sort((a,b)=>b.y-a.y||a.x-b.x);
+      const objects=frame.children.filter(o=>shelfForItem(frame,o)?.id===floor.id).map(projection.box).sort((a,b)=>a.y-b.y||a.x-b.x);
       for(const item of objects)drawBox(item,floor);
       for(const pipe of frame.pipes.filter(pipe=>pipe.z>=z&&pipe.z<z+floor.heightVoxels).map(projection.pipe)){
         const center=p(pipe.x+.5,pipe.y+.5,pipe.z+.14);for(const face of pipe.faces){const v=DIRECTIONS[face];line(center,p(pipe.x+.5+v[0]*.5,pipe.y+.5+v[1]*.5,Math.max(0,Math.min(size.height,pipe.z+.14+v[2]*.5))),'#77c8bc99',1.6);}
@@ -101,7 +103,7 @@ export function createRackOverview(host,{getFrame,getState,getSelected,onChoose}
       const button=buttons.get(floor.id);if(button){Object.assign(button.style,{left:`${floor.x}px`,top:`${floor.top}px`,width:`${floor.width}px`,height:`${floor.height}px`});button.dataset.expansion=weights[floor.id].toFixed(3);button.setAttribute('aria-pressed',selected);}
     }
     polygon([p(0,0,top),p(size.width,0,top),p(size.width,size.depth,top),p(0,size.depth,top)],null,'#829397',2);
-    line(p(0,0,0),p(0,0,top),'#a0afb2',2.5);line(p(size.width,0,0),p(size.width,0,top),'#a0afb2',2.5);
+    line(p(0,size.depth,0),p(0,size.depth,top),'#a0afb2',2.5);line(p(size.width,size.depth,0),p(size.width,size.depth,top),'#a0afb2',2.5);
     if(moving)requestDraw();
   }
   new ResizeObserver(()=>{previous=0;requestDraw();}).observe(host);

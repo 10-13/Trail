@@ -14,7 +14,18 @@ test('leaving restores the collapsed geometry and never changes shelf definition
 test('front hit areas and projected shelf bases agree at desktop and phone sizes',()=>{
   for(const [w,h]of [[1440,850],[390,550]]){
     const layout=rackOverviewLayout(frame,w,h,{'shelf-3':1});
-    for(const f of layout.floors){assert.equal(rackShelfAt(layout,f.x+f.width/2,(f.top+f.bottom)/2),f.id);assert.equal(layout.project(0,0,f.z).y,f.bottom);assert.equal(rackShelfAt(layout,f.x-layout.dx/2,(f.top+f.bottom)/2-layout.dy/2),f.id);assert.ok(f.top>=0);assert.ok(f.bottom<h);assert.ok(f.x>=0&&f.x+f.width<w);}
+    for(const f of layout.floors){assert.equal(rackShelfAt(layout,f.x+f.width/2,(f.top+f.bottom)/2),f.id);assert.equal(layout.project(0,layout.size.depth,f.z).y,f.bottom);assert.equal(rackShelfAt(layout,f.x-layout.dx/2,(f.top+f.bottom)/2-layout.dy/2),f.id);assert.ok(f.top>=0);assert.ok(f.bottom<h);assert.ok(f.x>=0&&f.x+f.width<w);}
+  }
+});
+
+test('a conveyor at the bottom of the shelf plan stays at the near edge in the overview',()=>{
+  const layout=rackOverviewLayout(frame,1000,700),x=frame.width/2;
+  for(const floor of layout.floors){
+    const near=layout.project(x,frame.depth-.5,floor.z),far=layout.project(x,.5,floor.z);
+    assert.ok(near.y>far.y,'The row at the bottom of the plan must also be nearer the viewer in 3D');
+    assert.ok(near.x>far.x,'Only depth recedes to the left; the train direction remains unchanged');
+    assert.equal(layout.project(x,frame.depth,floor.z).y,floor.bottom);
+    assert.equal(layout.project(x,0,floor.z).y,floor.bottom-layout.dy);
   }
 });
 

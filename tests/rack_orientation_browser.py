@@ -15,6 +15,9 @@ def cyan_pixel(page,canvas,x,y):
     # Drawn block faces differ from the neutral background/grid in their blue tint.
     return page.locator(canvas).evaluate("""(c,p)=>{const r=c.getBoundingClientRect(),s=c.width/r.width,d=c.getContext('2d').getImageData(Math.round(p.x*s),Math.round(p.y*s),1,1).data;return d[1]>45&&d[2]>d[0]+12}""",{'x':x,'y':y})
 
+def pipe_pixel(page,canvas,x,y):
+    return page.locator(canvas).evaluate("""(c,p)=>{const s=c.width/c.getBoundingClientRect().width,d=c.getContext('2d').getImageData(Math.round(p.x*s)-1,Math.round(p.y*s)-1,3,3).data;for(let i=0;i<d.length;i+=4)if(d[i+1]>d[i]+20&&d[i+1]>=d[i+2])return true;return false}""",{'x':x,'y':y})
+
 def run(page,rotation,explicit=False):
     errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
     page.goto('http://127.0.0.1:4173');page.wait_for_selector('.catalog-card',state='attached');page.evaluate(FIXTURE,{'rotation':rotation,'explicit':explicit});page.reload();page.wait_for_selector('.catalog-card',state='attached')
@@ -23,12 +26,21 @@ def run(page,rotation,explicit=False):
     # Independently expected world-relative AABBs for the asymmetric block.
     x,y,w,d=[(1,1,2,1),(4,1,1,2),(7,4,2,1),(1,7,1,2)][rotation]
     geom=page.evaluate("""async f=>{const {rackOverviewLayout}=await import('/rack-overview.js'),r=document.getElementById('rack-overview').getBoundingClientRect(),l=rackOverviewLayout(f,r.width,Math.max(120,r.height-30));return {x:l.x,bottom:l.floors[0].bottom,base:l.floors[0].base,width:l.frontWidth,dx:l.dx,dy:l.dy,size:l.size}}""",frame)
-    bx=geom['x']+(x+w/2)/geom['size']['width']*geom['width']-y/geom['size']['depth']*geom['dx']
-    by=geom['bottom']-geom['base']/4-y/geom['size']['depth']*geom['dy']
+    back=(geom['size']['depth']-y-d)/geom['size']['depth']
+    bx=geom['x']+(x+w/2)/geom['size']['width']*geom['width']-back*geom['dx']
+    by=geom['bottom']-geom['base']/4-back*geom['dy']
     assert cyan_pixel(page,'#rack-overview-canvas',bx,by),(rotation,'overview block mirrored')
+    # A pipe must stay on the same near/far row when switching to the top plan.
+    px,py=[(7.5,4.5),(1.5,7.5),(2.5,1.5),(4.5,2.5)][rotation]
+    pipe_back=(geom['size']['depth']-py)/geom['size']['depth']
+    pipe_x=geom['x']+px/geom['size']['width']*geom['width']-pipe_back*geom['dx']
+    pipe_y=geom['bottom']-.14/4*geom['base']-pipe_back*geom['dy']
+    assert pipe_pixel(page,'#rack-overview-canvas',pipe_x,pipe_y),(rotation,'overview pipe depth mirrored')
     assert snapshot(page)==before,'Opening an editor must not rotate the saved construction'
     page.locator('[data-rack-shelf=shelf-1]').click();page.mouse.move(5,5)
     g=shelf_geometry(page,frame)
+    rect=page.locator('#shelf-canvas').bounding_box()
+    assert pipe_pixel(page,'#shelf-canvas',g['left']-rect['x']+px*g['scale'],g['top']-rect['y']+py*g['scale']),(rotation,'plan pipe depth mirrored')
     assert cyan_pixel(page,'#shelf-canvas',g['left']-page.locator('#shelf-canvas').bounding_box()['x']+(x+.18)*g['scale'],g['top']-page.locator('#shelf-canvas').bounding_box()['y']+(y+.18)*g['scale']),(rotation,'plan block mirrored')
     # Click the visible box, drag it one local cell, and erase at the new location.
     click_shelf(page,frame,2,1.5);expect(page.locator('#shelf-inspector')).to_be_visible()
