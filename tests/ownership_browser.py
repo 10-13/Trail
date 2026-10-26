@@ -9,7 +9,7 @@ def run(page):
  errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
  page.goto('http://127.0.0.1:4173');page.wait_for_selector('.catalog-card',state='attached');original=snapshot(page)
  page.keyboard.press('Tab');assert page.locator('[data-type]').count()==1;assert page.locator('[data-type=frame]').count()==1;assert page.locator('#world-pipe-palette,#pipe-height').count()==0;page.keyboard.press('Escape')
- click_world(page,10,3);page.locator('#edit-frame').click()
+ click_world(page,10,3);page.locator('#edit-frame').click();page.locator('#rack-view-plan').click()
  assert page.locator('#shelf-canvas').evaluate("c=>{const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=0;i<d.length;i+=4)if(d[i]===236&&d[i+1]===98&&d[i+2]===98)n++;return n}")==0
  page.locator('#close-frame-editor').click();page.locator('#world-simulation [data-production-demo]').click();page.locator('#editor-simulation [data-sim-fast]').click();page.wait_for_timeout(350);page.locator('#editor-simulation [data-sim-toggle]').click()
  saved=snapshot(page);assert saved['pipes']==[] and saved['objects'][0]['pipes'];assert total(saved['simulation'])==128

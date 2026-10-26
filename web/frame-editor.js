@@ -1,3 +1,4 @@
+import { createRackOverview } from './rack-overview.js';
 import { ensureSimulation, pipeTokens, collectResources } from './simulation.js';
 import { createSimulationControls, createProductionInspector, drawProductionGlyph } from './production-ui.js';
 import { EQUIPMENT, dimensions, localSize, equipmentPlacementError, putEquipment, removeEquipment, setFrameShelves, updatePorts, putPipe, pipePlacementError, paintPipeRoute, removePipe, findPipe, updatePipeFaces, connectEndpoints, connectShelfLevels, removePipeColumn, pipeColumnIds } from './core.js';
@@ -12,12 +13,16 @@ const meter=n=>(n/4).toLocaleString('ru-RU');
 export function createFrameEditor({getState,onChange,onClose,onSimulationStep,onSimulationChange,onDemo,demoActive,getSimulationMetrics}){
   const screen=$('frame-editor'),canvas=$('shelf-canvas'),ctx=canvas.getContext('2d'),wagon=$('viewport'),hud=document.querySelector('.hud');
   let frameId=null,shelfId=null,selectedId=null,selectedPipeId=null,brush=null,erase=false,draft=null,pointer=null,stroke=null,drag=null,movingId=null,pipeAnchor=null,continueAnchor=false,connectionStart=null;
+  let rackView='overview';
   let zoom=1,pan={x:0,y:0},highlightedPipes=new Set(),heightInputs=[],nearby=[],ownConnections=[];
   const view={axes:['x','y'],flip:false,scale:1,ox:0,oy:0,width:1,height:1};
   const inputs={},brushInputs={},frameInputs={};
   const frame=()=>getState().objects.find(o=>o.id===frameId);
   const shelf=()=>shelvesOf(frame()).find(s=>s.id===shelfId)||shelvesOf(frame())[0];
   const selected=()=>frame()?.children.find(o=>o.id===selectedId);
+  const overview=createRackOverview($('rack-overview'),{getFrame:frame,getState,getSelected:()=>shelfId,onChoose:id=>{switchShelf(id);setView('plan');canvas.focus();}});
+  function setView(mode){cancelGesture();draft=null;pointer=null;closePopovers();rackView=mode;screen.dataset.rackView=mode;canvas.hidden=mode!=='plan';document.querySelector('.shelf-zoom').hidden=mode!=='plan';overview.setVisible(mode==='overview');for(const name of ['overview','plan']){$(`rack-view-${name}`).setAttribute('aria-pressed',name===mode);$(`rack-view-${name}`).classList.toggle('active',name===mode);}refresh();message(mode==='overview'?'Наведи на полку, чтобы раскрыть её. Нажми для редактирования.':'');}
+  $('rack-view-overview').onclick=()=>setView('overview');$('rack-view-plan').onclick=()=>setView('plan');
   const message=(text='',error=false)=>{$('editor-message').textContent=text||'Tab — блоки · ⌫ — удаление · PageUp / PageDown — полки · пустое место — перетащить вид';$('editor-message').classList.toggle('error',error);};
   const simulationControls=createSimulationControls($('editor-simulation'),{getState,changed:onSimulationChange,step:onSimulationStep,demo:onDemo,demoActive,getMetrics:getSimulationMetrics});
   const productionInspector=createProductionInspector($('item-production'),{getState,getSelection:()=>!brush&&!erase?(selectedPipeId?{pipeId:selectedPipeId}:selected()?{owner:`${frameId}/${selectedId}`,type:selected().type}:null):null,changed,message});
@@ -72,7 +77,7 @@ export function createFrameEditor({getState,onChange,onClose,onSimulationStep,on
     $('collect-column').hidden=!selectedPipe()?.faces.some(f=>f==='nz'||f==='pz');
     productionInspector.refresh();portsEditor.refresh();pipeInspector.refresh();simulationControls.refresh();refreshNeighbors();networkPanel.refresh();draw();
   }
-  function toggleMenu(){const opening=$('editor-menu').hidden;closePopovers();$('editor-menu').hidden=!opening;$('editor-menu-button').setAttribute('aria-expanded',opening);if(opening)$('close-editor-menu').focus();else canvas.focus();}
+  function toggleMenu(){if(rackView==='overview')setView('plan');const opening=$('editor-menu').hidden;closePopovers();$('editor-menu').hidden=!opening;$('editor-menu-button').setAttribute('aria-expanded',opening);if(opening)$('close-editor-menu').focus();else canvas.focus();}
   function settings(){const opening=$('shelf-settings').hidden;closePopovers();$('shelf-settings').hidden=!opening;$('shelf-settings-button').setAttribute('aria-expanded',opening);if(opening){for(const [k,input]of Object.entries(frameInputs))input.value=frame()[k]/4;$('edit-frame-mount').value=frame().mount;renderHeights(shelvesOf(frame()).map(s=>s.height));}}
   function renderHeights(heights){$('shelf-height-fields').replaceChildren();heightInputs=[];for(const [i,h]of heights.entries()){const field=numberField(`Полка ${i+1}, м`,`shelf-height-${i+1}`,h/4,.25,2.5);field.input.oninput=heightTotal;heightInputs.push(field.input);$('shelf-height-fields').append(field.row);}heightTotal();}
   function heightTotal(){const total=heightInputs.reduce((n,i)=>n+(i.valueAsNumber||0),0);$('shelf-height-total').textContent=`Общая высота: ${total.toLocaleString('ru-RU')} / 2,5 м`;$('remove-shelf').disabled=heightInputs.length<2;$('add-shelf').disabled=heightInputs.length>=10;}
@@ -136,11 +141,11 @@ export function createFrameEditor({getState,onChange,onClose,onSimulationStep,on
   $('item-shelf-select').onchange=()=>{const item=selected(),target=shelvesOf(frame()).find(s=>s.id===$('item-shelf-select').value);if(!item||!target)return;const error=putEquipment(getState(),frameId,{...item,z:target.z,shelfId:target.id},item.id);if(error){refresh();message(error,true);}else{shelfId=target.id;changed();message('Блок перенесён на полку');}};
   $('collect-column').onclick=()=>{for(const id of pipeColumnIds(getState(),selectedPipeId,frameId))if(pipeTokens(getState(),id).length)collectResources(getState(),id);changed();message('Содержимое перехода возвращено в запас');};
   $('item-move').onclick=moveSelected;$('item-delete').onclick=toggleErase;$('editor-erase').onclick=toggleErase;$('editor-rotate').onclick=rotate;
-  $('editor-menu-button').onclick=toggleMenu;$('close-editor-menu').onclick=toggleMenu;$('shelf-settings-button').onclick=settings;$('close-shelf-settings').onclick=()=>closePopovers();$('shelf-select').onchange=()=>switchShelf($('shelf-select').value);
+  $('editor-menu-button').onclick=toggleMenu;$('close-editor-menu').onclick=toggleMenu;$('shelf-settings-button').onclick=settings;$('close-shelf-settings').onclick=()=>closePopovers();$('shelf-select').onchange=()=>{switchShelf($('shelf-select').value);if(rackView==='overview')setView('plan');};
   $('shelf-riser-up').onclick=()=>chooseRiser(1);$('shelf-riser-down').onclick=()=>chooseRiser(-1);$('close-shelf-inspector').onclick=()=>{clearSelection();refresh();};
   $('connect-ports-tool').onclick=()=>{brush={type:'connect'};erase=false;clearSelection();closePopovers();connectionStart=null;refresh();message('Выбери выход, затем вход. Труба проложится автоматически.');};
   function draw(){
-    if(screen.hidden||!frame())return;const area=canvas.getBoundingClientRect();if(!area.width||!area.height)return;
+    if(screen.hidden||!frame())return;if(rackView==='overview'){overview.refresh();return;}const area=canvas.getBoundingClientRect();if(!area.width||!area.height)return;
     const dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(area.width*dpr);canvas.height=Math.round(area.height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);
     const size=localSize(frame());view.width=size.width;view.height=size.depth;view.scale=Math.max(2,Math.min((area.width-64)/size.width,(area.height-64)/size.depth)*zoom);view.ox=(area.width-size.width*view.scale)/2+pan.x;view.oy=(area.height-size.depth*view.scale)/2+pan.y;
     const {scale,ox,oy}=view,right=ox+size.width*scale,bottom=oy+size.depth*scale;
@@ -164,15 +169,16 @@ export function createFrameEditor({getState,onChange,onClose,onSimulationStep,on
     if(draft){const error=draftError();if(draft.type==='pipe')drawProjectedPipe(ctx,draft,view,{preview:true,error:!!error});else if(draft.type==='riser'){const x=ox+draft.x*scale,y=oy+draft.y*scale;ctx.strokeStyle=error?'#ed8275':'#8ed8bf';ctx.lineWidth=2;ctx.strokeRect(x+2,y+2,scale-4,scale-4);ctx.fillStyle=ctx.strokeStyle;ctx.font=`${Math.max(12,scale*.55)}px monospace`;ctx.textAlign='center';ctx.fillText(draft.direction>0?'↑':'↓',x+scale/2,y+scale*.72);}else{const box=boxFor(draft);ctx.fillStyle=error?'#ed827540':'#8ed8bf40';ctx.strokeStyle=error?'#ed8275':'#8ed8bf';ctx.fillRect(box.x+1,box.y+1,box.width-2,box.height-2);ctx.strokeRect(box.x+1,box.y+1,box.width-2,box.height-2);}}
   }
   function boxFor(item){const d=dimensions(item);return{x:view.ox+item.x*view.scale,y:view.oy+item.y*view.scale,width:d.width*view.scale,height:d.depth*view.scale};}
-  function close(){cancelGesture();screen.hidden=true;wagon.hidden=false;hud.hidden=false;document.body.dataset.screen='wagon';onClose();}
+  function close(){cancelGesture();overview.setVisible(false);screen.hidden=true;wagon.hidden=false;hud.hidden=false;document.body.dataset.screen='wagon';onClose();}
   $('close-frame-editor').onclick=close;
   window.addEventListener('keydown',event=>{
     if(screen.hidden)return;
     if(event.code==='Tab'&&!event.shiftKey&&!event.ctrlKey&&!event.metaKey){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)toggleMenu();return;}
-    if(event.code==='Escape'){event.preventDefault();event.stopImmediatePropagation();if(drag||stroke){cancelGesture();draw();}else if(!$('editor-menu').hidden||!$('shelf-settings').hidden)closePopovers();else if(brush||erase)clearTool();else if(selectedId||selectedPipeId){clearSelection();refresh();}else close();return;}
+    if(event.code==='Escape'){event.preventDefault();event.stopImmediatePropagation();if(drag||stroke){cancelGesture();draw();}else if(!$('editor-menu').hidden||!$('shelf-settings').hidden)closePopovers();else if(brush||erase)clearTool();else if(selectedId||selectedPipeId){clearSelection();refresh();}else if(rackView==='plan')setView('overview');else close();return;}
     if(event.target instanceof HTMLInputElement||event.target instanceof HTMLSelectElement||event.target.isContentEditable||event.ctrlKey||event.metaKey||event.altKey)return;
+    if(rackView==='overview'&&['ArrowUp','ArrowDown','Home','End'].includes(event.code)){event.preventDefault();event.stopImmediatePropagation();const all=shelvesOf(frame()),index=all.findIndex(s=>s.id===shelfId),next=event.code==='Home'?all.at(-1):event.code==='End'?all[0]:all[Math.max(0,Math.min(all.length-1,index+(event.code==='ArrowUp'?1:-1)))];overview.focusShelf(next.id);return;}
     const actions={Backspace:toggleErase,Delete:toggleErase,KeyR:rotate,KeyM:moveSelected,PageUp:()=>stepShelf(1),PageDown:()=>stepShelf(-1)};
-    if(actions[event.code]){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)actions[event.code]();}
+    if(actions[event.code]){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat){if(rackView==='overview')setView('plan');actions[event.code]();}}
   });
   new ResizeObserver(draw).observe(canvas);
   new ResizeObserver(()=>{screen.style.setProperty('--shelf-popover-top',`${document.querySelector('.shelf-toolbar').getBoundingClientRect().height+8}px`);draw();}).observe(document.querySelector('.shelf-toolbar'));
@@ -181,7 +187,7 @@ export function createFrameEditor({getState,onChange,onClose,onSimulationStep,on
     get isOpen(){return !screen.hidden;},
     open(id){if(!getState().objects.some(o=>o.id===id&&o.type==='frame'))return;frameId=id;shelfId=shelvesOf(frame())[0].id;clearSelection();brush=draft=drag=stroke=null;erase=false;movingId=null;pipeAnchor=null;continueAnchor=false;connectionStart=null;zoom=1;pan={x:0,y:0};closePopovers();neighbors.open=false;
       for(const [key,input]of Object.entries(brushInputs))input.value=Math.min(2,key==='height'?shelf().height:localSize(frame())[key])/4;
-      wagon.hidden=true;hud.hidden=true;screen.hidden=false;document.body.dataset.screen='editor';refresh();message();$('close-frame-editor').focus();
+      wagon.hidden=true;hud.hidden=true;screen.hidden=false;document.body.dataset.screen='editor';overview.reset();setView('overview');$('close-frame-editor').focus();
     },close
   };
 }

@@ -30,6 +30,7 @@ def choose_world(page, kind):
 
 
 def shelf_geometry(page,current):
+    if not page.locator('#shelf-canvas').is_visible():page.locator('#rack-view-plan').click()
     canvas=page.locator('#shelf-canvas')
     image=Image.open(BytesIO(base64.b64decode(canvas.evaluate("node=>node.toDataURL().split(',')[1]")))).convert('RGB')
     columns={};points=[]
