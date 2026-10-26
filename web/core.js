@@ -1,8 +1,9 @@
+import { wrapLegacyObject, uprightLegacyFrame, remapLegacyOwners, migrateOwnedPipes } from './ownership.js';
 import { makeShelves, shelvesOf, shelvesError, shelfPlacementError } from './shelves.js';
-import { ensureSimulation, canonicalSimulation, simulationError, deletionError, pipeTokens } from './simulation.js';
-import { WAGON, PLAYER, TYPES, EQUIPMENT, localSize, dimensions, intersects, validOrientation, transformBox } from './geometry.js';
+import { ensureSimulation, canonicalSimulation, simulationError, deletionError, pipeTokens, collectResources } from './simulation.js';
+import { WAGON, PLAYER, TYPES, EQUIPMENT, localSize, dimensions, intersects, validOrientation, transformBox, orientationOf } from './geometry.js';
 export { WAGON, PLAYER, TYPES, EQUIPMENT, localSize, dimensions, intersects } from './geometry.js';
-import { portsError, canonicalPorts, networkError, rebuildGraph, canonicalPipe, pipeScope, pipeShapeError, allPipes, pipeHitsPlayer, cellKey, sameCell, routeCells, autoPortFaces, DIRECTIONS, OPPOSITE, worldPipe, rotateFace, localFace, adjacent, worldPorts, pipesInFrame } from './logistics.js';
+import { portsError, canonicalPorts, networkError, rebuildGraph, canonicalPipe, pipeScope, pipeShapeError, allPipes, pipeHitsPlayer, cellKey, sameCell, routeCells, autoPortFaces, DIRECTIONS, OPPOSITE, worldPipe, rotateFace, localFace, adjacent, worldPorts, pipesInFrame, rackAtCell, localCell } from './logistics.js';
 export { rebuildGraph } from './logistics.js';
 function boxError(object, definitions) {
   if (!object || !Object.hasOwn(definitions, object.type)) return 'Неизвестный тип объекта';
@@ -45,6 +46,8 @@ function contentsError(frame) {
 export function placementError(state, object, ignoreId = null, checkPlayer = true) {
   const error = boxError(object, TYPES);
   if (error) return error;
+  if(object.type!=='frame')return 'Объекты размещаются только на полках стеллажа';
+  if(orientationOf(object)[2]!==3)return 'Полки должны быть параллельны полу: стеллаж вращается только вокруг вертикали';
   const size = dimensions(object), mount = object.mount === undefined ? 'floor' : object.mount;
   if (object.type === 'frame') {
     if (!['floor', 'ceiling'].includes(mount)) return 'Неизвестное крепление каркаса';
@@ -61,7 +64,7 @@ export function placementError(state, object, ignoreId = null, checkPlayer = tru
   const other = state.objects.find(item => item.id !== ignoreId && intersects(object, item));
   if (other) return `Место занято: ${TYPES[other.type].short.toLowerCase()}`;
   if (checkPlayer && hitsPlayer(object, state.player)) return 'Здесь стоит персонаж — отойди в сторону';
-  const future = { ...state, objects: [...state.objects.filter(item => item.id !== ignoreId), object] };
+  const future = { ...state, pipes:state.pipes.filter(p=>!ignoreId||!frameTransformChanged(state.objects.find(o=>o.id===ignoreId),object)||!p.rackIds?.includes(ignoreId)), objects: [...state.objects.filter(item => item.id !== ignoreId), object] };
   const pipeError = networkError(future, checkPlayer);
   if (pipeError) return pipeError;
   return '';
@@ -76,18 +79,19 @@ function canonicalObject(object) {
   return result;
 }
 export function createState(demo = true) {
-  const state = { version: 5, nextId: 5, nextPipeId: 1, pipes: [], player: { x: 3, y: 6, angle: 0 }, objects: demo ? [
+  const state = { version: 6, nextId: 5, nextPipeId: 1, pipes: [], player: { x: 3, y: 6, angle: 0 }, objects: demo ? [
     { id: 'object-1', type: 'frame', x: 7, y: 1, z: 0, rotation: 0, shelves:makeShelves([4,4]) },
     { id: 'object-2', type: 'frame', x: 19, y: 1, z: 0, rotation: 0, shelves:makeShelves([4,4]) },
     { id: 'object-3', type: 'workbench', x: 31, y: 8, z: 0, rotation: 0 },
     { id: 'object-4', type: 'storage', x: 40, y: 1, z: 0, rotation: 0 }
-  ].map(canonicalObject) : [] };
+  ].map(o=>canonicalObject(o.type==='frame'?o:wrapLegacyObject(o))) : [] };
   rebuildGraph(state); ensureSimulation(state); return state;
 }
 export function putObject(state, candidate, movingId = null) {
   if (movingId && !state.objects.some(item => item.id === movingId)) return 'Объект для перемещения не найден';
   const error = placementError(state, candidate, movingId);
   if (error) return error;
+  if(movingId&&frameTransformChanged(state.objects.find(o=>o.id===movingId),candidate))removeRackBridges(state,movingId);
   const object = canonicalObject({ ...candidate, id: movingId || `object-${state.nextId}` });
   if (movingId) state.objects = state.objects.map(item => item.id === movingId ? object : item);
   else { state.objects.push(object); state.nextId++; }
@@ -168,6 +172,7 @@ export function updatePorts(state, frameId, objectId, ports, nextPortId) {
   return frameId ? putEquipment(state, frameId, candidate, objectId) : putObject(state, candidate, objectId);
 }
 export function pipePlacementError(state, candidate, frameId = null) {
+  if(!frameId)return 'Трубы размещаются только внутри стеллажа';
   const error = pipeShapeError(candidate); if (error) return error;
   const future = structuredClone(state), pipes = pipeScope(future, frameId);
   if (!pipes) return 'Каркас не найден';
@@ -184,7 +189,8 @@ export function paintPipeRoute(state, frameId, from, to, preview = false) {
   if (![to?.x, to?.y, to?.z, ...(from ? [from.x, from.y, from.z] : [])].every(Number.isInteger)) return 'Маршрут должен быть привязан к сетке';
   return paintPipeCells(state, frameId, routeCells(from, to), preview, to.faces);
 }
-function paintPipeCells(state, frameId, cells, preview = false, heading = ['nx','px']) {
+function paintPipeCells(state, frameId, cells, preview = false, heading = ['nx','px'], rackIds = []) {
+  if(!frameId&&!rackIds.length)return 'Трубы размещаются только внутри стеллажа';
   const future = structuredClone(state), pipes = pipeScope(future, frameId); if (!pipes) return 'Каркас не найден';
   const parent = frameId ? future.objects.find(item => item.id === frameId) : null, limit = parent ? localSize(parent) : WAGON;
   if (cells.some(c => c.x < 0 || c.y < 0 || c.z < 0 || c.x >= limit.width || c.y >= limit.depth || c.z >= limit.height)) return 'Маршрут выходит за границы';
@@ -199,7 +205,9 @@ function paintPipeCells(state, frameId, cells, preview = false, heading = ['nx',
       const owner = existing.frameId ? future.objects.find(item => item.id === existing.frameId) : null;
       refs.set(cellKey(cell), { raw: (owner ? owner.pipes : future.pipes).find(pipe => pipe.id === existing.id), owner, existing });
     } else {
-      const pipe = { ...cell, id: `pipe-${future.nextPipeId++}`, faces: [] }; pipes.push(pipe); refs.set(cellKey(cell), { raw: pipe, owner: parent });
+      const world=worldPipe(parent,{...cell,faces:[]}),owner=parent||rackAtCell(future,world);
+      const pipe={...(owner?localCell(owner,world):world),id:`pipe-${future.nextPipeId++}`,faces:[],...(!owner?{rackIds:[...rackIds]}:{})};
+      (owner?owner.pipes:future.pipes).push(pipe);refs.set(cellKey(cell),{raw:pipe,owner});
     }
   }
   const direction = (a,b) => Object.keys(DIRECTIONS).find(face => sameCell(adjacent(a,face), b));
@@ -233,11 +241,17 @@ function paintPipeCells(state, frameId, cells, preview = false, heading = ['nx',
 export function connectEndpoints(state, first, second, preview = false) {
   if (!first || !second || first.id === second.id) return 'Выбери два разных подключения';
   if (first.kind !== 'pipe' && second.kind !== 'pipe' && first.kind === second.kind) return 'Соедини выход со входом';
+  const frameIds=[...new Set([first,second].flatMap(endpoint=>{
+    if(endpoint.frameId)return [endpoint.frameId];
+    const pipe=allPipes(state).find(p=>p.id===endpoint.pipeId);return pipe?.frameId?[pipe.frameId]:pipe?.rackIds||[];
+  }))];
+  if(!frameIds.length||frameIds.length>2||frameIds.some(id=>!state.objects.some(o=>o.id===id&&o.type==='frame')))return 'Соединять можно только объекты в стеллажах';
   const start = first.neighbor, end = second.neighbor;
   const lead = adjacent(start, first.face), tail = adjacent(end, second.face);
   const solids = state.objects.flatMap(o => o.type === 'frame' ? o.children.map(item => transformBox(o,item)) : [o]);
   const occupied = new Set(allPipes(state).map(cellKey));
-  const free = c => c.x >= 0 && c.y >= 0 && c.z >= 0 && c.x < WAGON.width && c.y < WAGON.depth && c.z < WAGON.height && !solids.some(o => {
+  const permitted=c=>{const rack=rackAtCell(state,c);return frameIds.length===1?rack?.id===frameIds[0]:!rack||frameIds.includes(rack.id);};
+  const free = c => permitted(c)&&c.x >= 0 && c.y >= 0 && c.z >= 0 && c.x < WAGON.width && c.y < WAGON.depth && c.z < WAGON.height && !solids.some(o => {
     const d=dimensions(o); return c.x>=o.x && c.y>=o.y && c.z>=o.z && c.x<o.x+d.width && c.y<o.y+d.depth && c.z<o.z+d.height;
   }) && !pipeHitsPlayer(c,state.player) && (!occupied.has(cellKey(c)) || sameCell(c,start) || sameCell(c,end));
   if (!free(start) || !free(end)) return 'Подключение занято оборудованием, трубой или персонажем';
@@ -257,7 +271,8 @@ export function connectEndpoints(state, first, second, preview = false) {
     if(!previous.has(cellKey(tail))) return 'Нет свободного пути между подключениями';
     cells=[];for(let c=tail;c;c=previous.get(cellKey(c)))cells.push(c);cells.reverse();cells=[start,...cells,end];
   }
-  const error=paintPipeCells(state,null,cells,preview,[OPPOSITE[first.face],first.face]);
+  const only=frameIds.length===1?state.objects.find(o=>o.id===frameIds[0]):null;
+  const error=paintPipeCells(state,only?.id||null,only?cells.map(c=>localCell(only,c)):cells,preview,only?[localFace(only,OPPOSITE[first.face]),localFace(only,first.face)]:[OPPOSITE[first.face],first.face],frameIds);
   return error;
 }
 export function removePipe(state, id) {
@@ -282,7 +297,15 @@ export function updatePipeFaces(state, id, faces) {
 }
 // Convert a local child box to wagon coordinates, including the parent's rotation.
 export function worldEquipment(frame, item) { return transformBox(frame, item); }
-export function removeObject(state, id) { const object=state.objects.find(o=>o.id===id),error=deletionError(state,id,(object?.pipes||[]).map(p=>p.id));if(error)return error;state.objects = state.objects.filter(item => item.id !== id); rebuildGraph(state);return ""; }
+function frameTransformChanged(before,after){return before&&(['x','y','z','width','depth','height'].some(k=>(before[k]??localSize(before)[k])!==(after[k]??localSize(after)[k]))||orientationOf(before).some((v,i)=>v!==orientationOf(after)[i]));}
+function removeRackBridges(state,id){const ids=new Set(state.pipes.filter(p=>p.rackIds?.includes(id)).map(p=>p.id));for(const pipeId of ids)if(pipeTokens(state,pipeId).length)collectResources(state,pipeId);state.pipes=state.pipes.filter(p=>!ids.has(p.id));}
+export function removeObject(state,id){
+  const object=state.objects.find(o=>o.id===id);if(!object)return '';
+  const sim=ensureSimulation(state);
+  for(const owner of Object.keys(sim.containers))if(owner===id||owner.startsWith(`${id}/`))collectResources(state,owner);
+  for(const pipe of object.pipes||[])if(pipeTokens(state,pipe.id).length)collectResources(state,pipe.id);
+  removeRackBridges(state,id);state.objects=state.objects.filter(o=>o.id!==id);rebuildGraph(state);ensureSimulation(state);return '';
+}
 export function canStand(state, player) {
   return Number.isFinite(player.x) && Number.isFinite(player.y) && player.x >= PLAYER.radius && player.x <= WAGON.width - PLAYER.radius && player.y >= PLAYER.radius && player.y <= WAGON.depth - PLAYER.radius && !state.objects.some(object => hitsPlayer(object, player)) && !allPipes(state).some(pipe => pipeHitsPlayer(pipe, player));
 }
@@ -301,13 +324,13 @@ export function movePlayer(state, dx, dy, seconds) {
   }
 }
 export function serialize(state) {
-  return JSON.stringify({ version: 5, wagon: WAGON, nextId: state.nextId, nextPipeId: state.nextPipeId, simulation: canonicalSimulation(state), pipes: state.pipes.map(canonicalPipe), player: state.player, objects: state.objects.map(canonicalObject) }, null, 2);
+  return JSON.stringify({ version: 6, wagon: WAGON, nextId: state.nextId, nextPipeId: state.nextPipeId, simulation: canonicalSimulation(state), pipes: state.pipes.map(canonicalPipe), player: state.player, objects: state.objects.map(canonicalObject) }, null, 2);
 }
 export function deserialize(text) {
   if (text.length > 1_000_000) throw new Error('Файл слишком большой');
   let data;
   try { data = JSON.parse(text); } catch { throw new Error('Файл не содержит корректный JSON'); }
-  if (!data || ![1, 2, 3, 4, 5].includes(data.version)) throw new Error('Неподдерживаемая версия сохранения');
+  if (!data || ![1, 2, 3, 4, 5, 6].includes(data.version)) throw new Error('Неподдерживаемая версия сохранения');
   if (!data.wagon || Object.keys(WAGON).some(key => data.wagon[key] !== WAGON[key])) throw new Error('Сохранение предназначено для другого вагона');
   if (!Array.isArray(data.objects) || data.objects.length > 5760) throw new Error('Некорректный список объектов');
   if (!Number.isSafeInteger(data.nextId) || data.nextId < 1) throw new Error('Некорректный счётчик объектов');
@@ -324,6 +347,16 @@ export function deserialize(text) {
   if (migratedPipes) result.migrationNotice = `Старые трубы обновлены: ${migratedPipes}. Ответвления убраны — проверь соединения.`;
   result.nextPipeId = data.nextPipeId ?? 1;
   if (data.pipes !== undefined && !Array.isArray(data.pipes)) throw new Error('Некорректный список труб');
+  const ownerRemap=new Map();let wrapped=0,leveled=0;
+  if(data.version<6)data.objects=data.objects.map(item=>{
+    const error=boxError(item,TYPES);if(error)throw new Error(error);
+    if(item.type!=='frame'){
+      if(item.z!==0||Object.keys(localSize(item)).some(k=>localSize(item)[k]!==TYPES[item.type][k]))throw new Error('Некорректное свободное сооружение');
+      ownerRemap.set(item.id,`${item.id}/item-1`);wrapped++;return wrapLegacyObject(item);
+    }
+    const upright=uprightLegacyFrame(item);if(upright!==item)leveled++;return upright;
+  });
+  remapLegacyOwners(data.simulation,ownerRemap);
   for (const item of data.objects) {
     if (!item || typeof item !== 'object' || typeof item.id !== 'string' || !/^object-[1-9]\d*$/.test(item.id) || ids.has(item.id) || Number(item.id.slice(7)) >= data.nextId) throw new Error('Некорректный идентификатор объекта');
     const error = placementError(result, item, null, false);
@@ -331,12 +364,14 @@ export function deserialize(text) {
     ids.add(item.id); result.objects.push(canonicalObject(item));
   }
   result.pipes = data.pipes ?? [];
-  const pipeError = networkError(result, false); if (pipeError) throw new Error(pipeError);
+  const pipeError = networkError(result, false, data.version<6); if (pipeError) throw new Error(pipeError);
   result.pipes = result.pipes.map(canonicalPipe);
   if (!data.player || !Number.isFinite(data.player.angle) || !canStand(result, data.player)) throw new Error('Некорректное положение персонажа');
   result.player = { x: data.player.x, y: data.player.y, angle: data.player.angle };
   result.nextId = data.nextId;
   rebuildGraph(result);
   if(data.version>=4){const error=simulationError(result,data.simulation);if(error)throw new Error(error);result.simulation=structuredClone(data.simulation);}
-  ensureSimulation(result);return result;
+  if(data.version<6){const migrated=migrateOwnedPipes(result);if(wrapped||leveled||migrated.adopted||migrated.recovered)result.migrationNotice=[result.migrationNotice,'Схема обновлена: объекты и трубы привязаны к стеллажам.',migrated.recovered?'Бесхозные трубы разобраны, содержимое возвращено в запас.':'',leveled?'Полки выровнены параллельно полу.':''].filter(Boolean).join(' ');}
+  const ownershipError=networkError(result,false);if(ownershipError)throw new Error(ownershipError);
+  rebuildGraph(result);ensureSimulation(result);return result;
 }

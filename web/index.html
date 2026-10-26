@@ -22,7 +22,6 @@
       </div>
       <div class="save-tools panel" aria-label="Сохранение и настройки">
         <span id="save-state">Нет сохранения</span>
-        <label class="pipe-height">Высота, м <input id="pipe-height" type="number" min="0" max="2.25" step="0.25" value="0" required></label>
         <button id="layer-toggle" class="quiet">Слой: все</button>
         <button id="grid-toggle" class="quiet" aria-pressed="true">Сетка <span>0,25 м</span></button>
         <button id="load" class="quiet">Загрузить</button>
@@ -32,10 +31,9 @@
 
     <aside id="build-menu" class="build-menu panel" aria-labelledby="build-title" hidden>
       <div class="menu-heading"><div><div class="section-label">МАСТЕРСКАЯ</div><h1 id="build-title">Строительство</h1></div><button id="close-build-menu" class="icon-button" aria-label="Закрыть меню строительства">×</button></div>
-      <p class="menu-help">Выбери объект, затем укажи место в вагоне.</p>
+      <p class="menu-help">В вагоне размещаются только стеллажи. Блоки и трубы — на их полках.</p>
       <details id="frame-options" open><summary>Параметры нового стеллажа</summary><div id="frame-config"></div><label class="field"><span class="field-label">Крепление</span><select id="frame-mount"><option value="floor">К полу</option><option value="ceiling">К потолку</option></select></label><p id="new-frame-clearance" class="muted"></p></details>
       <div id="catalog" class="catalog"></div>
-      <div id="world-pipe-palette"></div>
       <div class="file-tools"><button id="export" class="text-button">Экспорт JSON ↗</button><button id="import" class="text-button">Импорт JSON ↙</button></div>
       <input id="import-file" type="file" accept=".json,application/json" hidden>
       <p class="menu-footnote">Сетка 0,25 м · Поворот 90° · Esc закрыть</p>
@@ -45,7 +43,7 @@
       <div class="selection-summary"><div class="inspector-icon" id="selection-icon">↟</div><div class="selection-description"><div class="section-label" id="selection-label">ОБЪЕКТ</div><h2 id="selection-title"></h2><p id="selection-detail"></p></div></div>
       <div id="object-actions" class="object-actions" hidden><button id="edit-frame" hidden>Открыть стеллаж <kbd>E</kbd></button><button id="move-object">↔ Переместить <kbd>M</kbd></button><button id="rotate-object" hidden>↻ Повернуть <kbd>R</kbd></button><button id="delete-object" class="danger">Удалять <kbd>⌫</kbd></button></div>
       <div id="build-actions" class="object-actions" hidden><button id="rotate-ghost" hidden>↻ Повернуть <kbd>R</kbd></button><button id="cancel-build">Отменить <kbd>Esc</kbd></button></div>
-      <div id="world-rotation"></div><div id="world-production"></div><div id="world-ports"></div><div id="world-pipe-inspector"></div>
+      <div id="world-rotation"></div><div id="world-production"></div><div id="world-pipe-inspector"></div>
     </section>
     <div id="world-network"></div><div id="world-simulation"></div>
 
@@ -76,7 +74,7 @@
     </aside>
     <aside id="editor-menu" class="build-menu panel shelf-popover" aria-label="Выбор блока" hidden>
       <div class="menu-heading"><h2>Добавить на полку</h2><button id="close-editor-menu" aria-label="Закрыть меню блоков">×</button></div>
-      <div class="catalog"><button data-equipment-type="machine">Модуль</button><button data-equipment-type="tank">Бак</button><button data-equipment-type="filter">Фильтр</button><button data-equipment-type="centrifuge">Центрифуга</button></div>
+      <div class="catalog"><button data-equipment-type="storage">Ящик</button><button data-equipment-type="workbench">Верстак</button><button data-equipment-type="machine">Модуль</button><button data-equipment-type="tank">Бак</button><button data-equipment-type="filter">Фильтр</button><button data-equipment-type="centrifuge">Центрифуга</button></div>
       <details><summary>Размер нового блока</summary><div id="brush-fields"></div></details>
       <div id="editor-pipe-palette"></div><button id="connect-ports-tool">Соединить два порта</button>
       <details><summary>Поворот по оси</summary><div id="editor-rotation"></div></details><div id="neighbor-connections"></div><div id="editor-network"></div>

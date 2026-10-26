@@ -50,16 +50,10 @@ test('a third direction is refused without changing the existing connection', ()
   assert.equal(state.graph.links.length,1);assert.equal(serialize(state),before);
   assert.match(putPipe(state,{...cell(3,3),faces:['nx','px','py']},frame.id),/две грани/);
 });
-test('an explicit shared junction can join local and world pipes without duplicating a cell', () => {
-  const { state, frame } = pair();
-  assert.equal(putPipe(state, { x: 14, y: 3, z: 0, faces: ['nx','px'] }), '');
-  assert.equal(paintPipeRoute(state, frame.id, cell(2), cell(7)), '');
-  assert.equal(frame.pipes.length, 5);
-  assert.equal(state.pipes.length, 1);
-  assert.equal(state.graph.links.length, 1);
-  assert.equal(putObject(state, { ...frame, rotation: 1, y: 0 }, frame.id), '');
-  assert.equal(state.graph.links.length, 0);
-  assert.deepEqual([state.pipes[0].x,state.pipes[0].y], [14,3]);
+test('painted routes reuse local pipes and every segment follows its rack', () => {
+  const {state,frame}=pair();assert.equal(putPipe(state,{x:4,y:2,z:0,faces:['nx','px']},frame.id),'');
+  assert.equal(paintPipeRoute(state,frame.id,cell(2),cell(7)),'');assert.equal(frame.pipes.length,6);assert.equal(state.pipes.length,0);assert.equal(state.graph.links.length,1);
+  assert.equal(putObject(state,{...frame,rotation:1,y:0},frame.id),'');assert.equal(state.graph.links.length,1);
 });
 test('moving and rotating equipment moves its ports and never leaves stale graph links', () => {
   const { state, frame } = pair(); paintPipeRoute(state, frame.id, cell(2), cell(7));
@@ -96,9 +90,9 @@ test('pipes occupy free cells inside a hollow frame, but cannot overlap equipmen
   const { state, frame } = pair();
   assert.equal(putPipe(state, { ...cell(4,4,4), faces: ['nx','px'] }, frame.id), '');
   assert.match(putPipe(state, { ...cell(0,1,0), faces: ['nx','px'] }, frame.id), /оборудованием/);
-  assert.equal(putPipe(state, { x: 15, y: 5, z: 4, faces: ['nx','px'] }), '');
+  assert.equal(putPipe(state, { x: 5, y: 4, z: 4, faces: ['nx','px'] },frame.id), '');
   assert.match(putEquipment(state, frame.id, machine({ x: 4, y: 4, z: 4 })), /оборудованием/);
-  assert.match(putPipe(state, { x: 14, y: 5, z: 4, faces: ['nx','px'] }), /занята/);
+  assert.match(putPipe(state, { x: 4, y: 4, z: 4, faces: ['nx','px'] },frame.id), /занята/);
   const before = serialize(state);
   assert.match(updateFrame(state, frame.id, { height: 4 }), /границы/);
   assert.equal(serialize(state), before);
@@ -111,27 +105,20 @@ test('blocked route drawing is atomic and preserves every existing segment and o
   assert.match(paintPipeRoute(state, frame.id, cell(4), cell(100)), /границы/);
   assert.equal(serialize(state), before);
 });
-test('low pipes block the character and pipes at two metres permit passage underneath', () => {
-  const state = createState(false);
-  assert.equal(putPipe(state, { x: 10, y: 6, z: 8, faces: ['nx','px'] }), '');
-  assert.ok(canStand(state, { x: 10.5, y: 6.5 }));
-  state.player = { x: 10.5, y: 6.5, angle: 0 };
-  assert.match(putPipe(state, { x: 10, y: 6, z: 7, faces: ['nx','px'] }), /персонаж/);
-  state.player = { x: 3, y: 6.5, angle: 0 };
-  assert.equal(putPipe(state, { x: 10, y: 6, z: 7, faces: ['nx','px'] }), '');
-  for (let step=0;step<120;step++) movePlayer(state,1,0,1/60);
-  assert.ok(state.player.x <= 9.001);
+test('pipes cannot be placed freely in the wagon at any height', () => {
+  const state=createState(false);for(const z of [0,7,8,9])assert.match(putPipe(state,{x:10,y:6,z,faces:['nx','px']}),/внутри стеллажа/);
+  assert.equal(state.pipes.length,0);assert.ok(canStand(state,{x:10.5,y:6.5}));
 });
-test('v5 round trip rebuilds graph and migrates v2 layouts without losing geometry', () => {
+test('v6 round trip rebuilds graph and migrates v2 layouts without losing geometry', () => {
   const { state, frame } = pair(); paintPipeRoute(state, frame.id, cell(2), cell(7));
   const text = serialize(state), loaded = deserialize(text);
   assert.equal(serialize(loaded), text);
   assert.equal(loaded.graph.links.length, 1);
-  assert.equal(JSON.parse(text).version, 5);
+  assert.equal(JSON.parse(text).version, 6);
   const old = JSON.parse(text); old.version = 2; delete old.nextPipeId; delete old.pipes;
   for (const object of old.objects) { delete object.pipes; for (const item of object.children || []) { delete item.ports; delete item.nextPortId; } }
   const migrated = deserialize(JSON.stringify(old));
-  assert.equal(migrated.version, 5); assert.equal(migrated.objects[0].children[0].ports.length, 2);
+  assert.equal(migrated.version, 6); assert.equal(migrated.objects[0].children[0].ports.length, 2);
 });
 test('invalid ports and corrupt pipes are rejected without replacing the current state', () => {
   const { state, frame } = pair(); paintPipeRoute(state, frame.id, cell(2), cell(7));

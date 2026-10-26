@@ -21,8 +21,8 @@ with sync_playwright()as p:
         nearby.get_by_label('Подключение этого стеллажа').select_option('object-1/item-1/port-2');nearby.get_by_label('Соседнее подключение').select_option('object-2/item-1/port-1');nearby.locator('[data-connect-frames]').click()
         expect(page.locator('#editor-network summary')).to_contain_text('Связи: 1');assert any(16<=pipe['x']<22 for pipe in snapshot(page)['pipes'])
         page.keyboard.press('Escape');page.locator('#close-shelf-inspector').click();click_shelf(page,current(),4.5,2.5)
-        page.locator('#shelf-canvas').focus();page.keyboard.press('r');assert set(next(p for p in snapshot(page)['pipes']if p['x']==14)['faces'])=={'nz','pz'}
+        page.locator('#shelf-canvas').focus();page.keyboard.press('r');assert set(next(p for p in current()['pipes']if p['x']==4 and p['y']==2)['faces'])=={'nz','pz'}
         for _ in range(3):page.keyboard.press('r')
-        page.locator('#close-frame-editor').click();click_world(page,12,4);page.locator('#world-rotation [data-rotation-axis]').select_option('x');page.locator('#world-rotation [data-rotate-active]').click();assert snapshot(page)['objects'][0]['orientation']==[1,3,-2]
+        page.locator('#close-frame-editor').click();click_world(page,12,4);assert page.locator('#world-rotation option[value=x]').get_attribute('disabled') is not None;assert page.locator('#world-rotation option[value=y]').get_attribute('disabled') is not None;page.locator('#world-rotation [data-rotate-active]').click();assert snapshot(page)['objects'][0]['rotation']==1;assert snapshot(page)['pipes']==[]
         saved=snapshot(page);page.reload();page.wait_for_selector('.catalog-card',state='attached');assert snapshot(page)==saved;assert not errors,errors
-    browser.close();print('PASS: desktop/mobile neighbor bridge, X/Y equipment and pipe rotation, frame rotation and v5 persistence')
+    browser.close();print('PASS: desktop/mobile neighbor bridge, X/Y equipment and pipe rotation, upright rack rotation, bridge cleanup and v6 persistence')

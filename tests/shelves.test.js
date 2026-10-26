@@ -38,8 +38,8 @@ test('a vertical transition is removed as a unit and cannot lose its contents',(
   const sim=ensureSimulation(state);sim.pipes[ids[2]]=[{resource:'crude',destination:`${frame.id}/item-99/port-1`}];const before=serialize(state);assert.match(removePipeColumn(state,seed,frame.id),/забери/);assert.equal(serialize(state),before);
   sim.inventory.crude++;sim.pipes[ids[2]]=[];assert.equal(removePipeColumn(state,seed,frame.id),'');assert.equal(frame.pipes.length,0);
 });
-test('v5 saves preserve shelf layout, IDs, risers and buffers; v4 loads without moving any geometry',()=>{
-  const {state,frame}=setup();putEquipment(state,frame.id,block({z:4,shelfId:'shelf-2'}));connectShelfLevels(state,frame.id,'shelf-1',7,4,1);const text=serialize(state);assert.equal(serialize(deserialize(text)),text);assert.equal(JSON.parse(text).version,5);
+test('v6 saves preserve shelf layout, IDs, risers and buffers; v4 loads without moving any geometry',()=>{
+  const {state,frame}=setup();putEquipment(state,frame.id,block({z:4,shelfId:'shelf-2'}));connectShelfLevels(state,frame.id,'shelf-1',7,4,1);const text=serialize(state);assert.equal(serialize(deserialize(text)),text);assert.equal(JSON.parse(text).version,6);
   const old=JSON.parse(text);old.version=4;delete old.objects[0].shelves;delete old.objects[0].children[0].shelfId;old.objects[0].children[0].z=3;
   const loaded=deserialize(JSON.stringify(old));assert.equal(loaded.objects[0].children[0].z,3);assert.deepEqual(loaded.objects[0].shelves,makeShelves([8]));assert.deepEqual(loaded.simulation,old.simulation);
 });

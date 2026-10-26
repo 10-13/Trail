@@ -53,7 +53,7 @@ def run(page):
     page.locator('#shelf-zoom-in').click();page.locator('#shelf-fit').click()
     # Switching with the keyboard and save/reload do not disturb the contents.
     page.locator('#shelf-canvas').focus();page.keyboard.press('PageDown');expect(page.locator('#shelf-select')).to_have_value('shelf-1')
-    saved=snapshot(page);assert saved['version']==5
+    saved=snapshot(page);assert saved['version']==6
     page.locator('#close-frame-editor').click();page.reload();page.wait_for_selector('.catalog-card',state='attached');assert snapshot(page)==saved
     click_world(page,10,3);page.locator('#edit-frame').click()
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
@@ -72,4 +72,4 @@ with sync_playwright()as p:
     browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
     run(browser.new_page(viewport={'width':1440,'height':1000}))
     run(browser.new_page(viewport={'width':390,'height':844},is_mobile=True,has_touch=True))
-    browser.close();print('PASS: desktop/mobile shelf painting, occupancy, collision-safe move between shelves, riser/continuation/removal, editable heights, split/merge, zoom, keyboard navigation and v5 reload')
+    browser.close();print('PASS: desktop/mobile shelf painting, occupancy, collision-safe move between shelves, riser/continuation/removal, editable heights, split/merge, zoom, keyboard navigation and v6 reload')

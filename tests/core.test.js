@@ -15,11 +15,12 @@ test('placement enforces all walls, voxel alignment, floor mounting and known ty
   }
   assert.equal(placementError(state, frame(42, 8)), '');
 });
-test('objects can touch edges but cannot overlap; free structures obey the same rules', () => {
+test('racks can touch edges but cannot overlap; loose structures are refused', () => {
   const state = createState(false);
   assert.equal(putObject(state, frame()), '');
-  assert.match(placementError(state, { type: 'storage', x: 15, y: 2, z: 0, rotation: 0 }), /занято/);
-  assert.equal(putObject(state, { type: 'storage', x: 16, y: 1, z: 0, rotation: 0 }), '');
+  assert.match(placementError(state, { type: 'frame', x: 15, y: 2, z: 0, rotation: 0 }), /занято/);
+  assert.match(putObject(state, { type: 'storage', x: 16, y: 1, z: 0, rotation: 0 }), /только/);
+  assert.equal(putObject(state,frame(16)), '');
   assert.equal(state.objects.length, 2);
 });
 test('player prevents placement, including a corner intersecting the character circle', () => {

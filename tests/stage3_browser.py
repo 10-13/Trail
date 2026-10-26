@@ -26,4 +26,4 @@ with sync_playwright()as p:
         page.locator('#close-shelf-inspector').click();choose();before=current()['pipes'];route(7.5,10.5);expect(page.locator('#editor-message')).to_contain_text('оборудованием');assert current()['pipes']==before
         saved=snapshot(page);page.reload();page.wait_for_selector('.catalog-card',state='attached');assert snapshot(page)==saved
         assert not errors,errors
-    browser.close();print('PASS: desktop/mobile shelf routes, highlight, break/repair, rotation, port editing, atomic collision refusal, legacy import and v5 save')
+    browser.close();print('PASS: desktop/mobile shelf routes, highlight, break/repair, rotation, port editing, atomic collision refusal, legacy import and v6 save')

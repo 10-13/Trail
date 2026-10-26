@@ -1,3 +1,4 @@
+import { wrapLegacyObject } from '../web/ownership.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createState, putObject, putEquipment, putPipe, paintPipeRoute, connectEndpoints, serialize, deserialize, worldEquipment, updatePipeFaces, updateFrame } from '../web/core.js';
@@ -30,12 +31,12 @@ test('four turns about each axis restore dimensions and port locations; mixed tu
   assert.deepEqual(dimensions(rotateObject(base,'x')),{width:2,depth:4,height:3});
   assert.deepEqual(dimensions(rotateObject(base,'y')),{width:4,depth:3,height:2});
 });
-test('pitched equipment and frames retain ports, bounds, pipes and orientation through save/load',()=>{
+test('pitched equipment in upright racks retains ports, bounds, pipes and orientation through save/load',()=>{
   const state=createState(false),base=frame({width:6,depth:6,height:6});
   assert.equal(putObject(state,base),'');const f=state.objects[0];
   assert.equal(putEquipment(state,f.id,rotateObject(item({width:2,depth:2,height:3}),'x')),'');
   assert.equal(putPipe(state,{x:4,y:4,z:4,faces:['nx','px']},f.id),'');
-  assert.equal(putObject(state,rotateObject(f,'y'),f.id),'');const turned=state.objects[0];
+  assert.equal(putObject(state,rotateObject(f,'z'),f.id),'');const turned=state.objects[0];
   const pipe=allPipes(state)[0];assert.deepEqual(localCell(turned,pipe),{x:4,y:4,z:4});
   assert.deepEqual(pipesInFrame(state,turned)[0].faces,['nx','px']);
   const world=worldEquipment(turned,turned.children[0]);
@@ -43,21 +44,21 @@ test('pitched equipment and frames retain ports, bounds, pipes and orientation t
   const local=portsInFrame(state,turned);assert.equal(local[0].face,rotateFace('nx',turned.children[0]));
   assert.equal(serialize(deserialize(serialize(state))),serialize(state));
 });
-test('rotation collision checks use the new height and ceiling mounting follows that height',()=>{
+test('rack pitch is refused and ceiling mounting follows the configured height',()=>{
   const state=createState(false);assert.equal(putObject(state,frame({width:8,depth:4,height:2,z:8,mount:'ceiling'})),'');
-  const f=state.objects[0];assert.equal(updateFrame(state,f.id,rotateObject(f,'x')),'');
+  const f=state.objects[0];assert.match(updateFrame(state,f.id,rotateObject(f,'x')),/параллельны/);assert.equal(updateFrame(state,f.id,{height:4}),'');
   assert.equal(state.objects[0].z,6);assert.equal(dimensions(state.objects[0]).height,4);
   const before=serialize(state),broken=JSON.parse(before);broken.objects[0].orientation=[1,1,3];assert.throws(()=>deserialize(JSON.stringify(broken)),/поворот/);assert.equal(serialize(state),before);
 });
 test('incremental brush turns replace only a free terminal face and finish with a straight segment',()=>{
-  const state=createState(false),c=(x,y)=>({x,y,z:8});
-  assert.equal(paintPipeRoute(state,null,null,c(10,3)),'');
-  assert.equal(paintPipeRoute(state,null,c(10,3),c(12,3)),'');
-  assert.equal(paintPipeRoute(state,null,c(12,3),c(12,5)),'');
-  const at=(x,y)=>state.pipes.find(p=>p.x===x&&p.y===y);
+  const state=createState(false);putObject(state,frame({width:16,height:10}));const parent=state.objects[0],frameId=parent.id,c=(x,y)=>({x,y,z:8});
+  assert.equal(paintPipeRoute(state,frameId,null,c(10,3)),'');
+  assert.equal(paintPipeRoute(state,frameId,c(10,3),c(12,3)),'');
+  assert.equal(paintPipeRoute(state,frameId,c(12,3),c(12,5)),'');
+  const at=(x,y)=>parent.pipes.find(p=>p.x===x&&p.y===y);
   assert.deepEqual(new Set(at(12,3).faces),new Set(['nx','py']));
   for(const p of [at(10,3),at(12,5)])assert.equal(p.faces[0],OPPOSITE[p.faces[1]]);
-  const before=serialize(state);assert.match(paintPipeRoute(state,null,c(11,3),c(11,5)),/Ответвление/);assert.equal(serialize(state),before);
+  const before=serialize(state);assert.match(paintPipeRoute(state,frameId,c(11,3),c(11,5)),/Ответвление/);assert.equal(serialize(state),before);
   assert.match(updatePipeFaces(state,at(11,3).id,['nx','px','py']),/две грани/);
 });
 test('neighbor list includes other frame ports and free pipe ends; connection bridges both frames',()=>{
@@ -71,11 +72,11 @@ test('neighbor list includes other frame ports and free pipe ends; connection br
   assert.equal(serialize(deserialize(serialize(state))),serialize(state));
 });
 test('automatic bridge navigates a three dimensional obstacle and keeps ends straight',()=>{
-  const {state,a,b}=neighbors();assert.equal(putObject(state,{type:'storage',x:18,y:2,z:0,rotation:0}),'');
+  const {state,a,b}=neighbors();assert.equal(putObject(state,wrapLegacyObject({type:'storage',x:18,y:2,z:0,rotation:0})),'');
   const ports=worldPorts(state),out=ports.find(p=>p.frameId===a.id&&p.kind==='output'),input=ports.find(p=>p.frameId===b.id&&p.kind==='input');
   assert.equal(connectEndpoints(state,out,input),'');assert.equal(state.graph.links.length,1);
   assert.ok(state.pipes.some(p=>p.z>=3||p.y<2||p.y>=5));
-  for(const p of [state.pipes[0],state.pipes.at(-1)])assert.equal(p.faces[0],OPPOSITE[p.faces[1]]);
+  for(const id of [state.graph.links[0].pipeIds[0],state.graph.links[0].pipeIds.at(-1)]){const p=allPipes(state).find(p=>p.id===id);assert.equal(p.faces[0],OPPOSITE[p.faces[1]]);}
 });
 test('joining a dangling neighbor pipe extends it, and a blocked bridge is atomic',()=>{
   const {state,a,b}=neighbors();const ports=worldPorts(state),input=ports.find(p=>p.frameId===b.id&&p.kind==='input');

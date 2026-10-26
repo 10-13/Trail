@@ -16,8 +16,9 @@ with sync_playwright() as p:
     page.keyboard.press('Tab'); expect(page.locator('#build-menu')).to_be_visible()
     page.keyboard.press('Tab'); expect(page.locator('#build-menu')).to_be_hidden()
     assert len(snapshot(page)['objects']) == 4
+    assert page.locator('[data-type=storage], [data-type=workbench], #pipe-height, #world-pipe-palette').count()==0
     # The same brush remains selected after every placement.
-    choose_world(page, 'storage')
+    page.keyboard.press('Tab');page.locator('#new-frame-width').fill('.75');page.locator('#new-frame-depth').fill('.75');page.locator('#new-frame-height').fill('.75');page.locator('[data-type=frame]').click()
     click_world(page, 28.75, 2.75); click_world(page, 34.75, 2.75)
     assert len(snapshot(page)['objects']) == 6
     # Painting can also be performed while holding the pointer down.
@@ -64,7 +65,7 @@ with sync_playwright() as p:
     phone = browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True).new_page()
     phone.on('pageerror',lambda e:errors.append(str(e)))
     phone.goto('http://127.0.0.1:4173'); phone.wait_for_selector('.catalog-card',state='attached')
-    phone.locator('#build-menu-button').tap(); phone.locator('[data-type="storage"]').tap()
+    phone.locator('#build-menu-button').tap(); phone.locator('#new-frame-width').fill('.75');phone.locator('#new-frame-depth').fill('.75');phone.locator('#new-frame-height').fill('.75');phone.locator('[data-type="frame"]').tap()
     click_world(phone, 44.75, 9.75); assert len(snapshot(phone)['objects']) == 5
     phone.locator('#erase-tool').tap(); click_world(phone, 44.75, 9.75)
     assert len(snapshot(phone)['objects']) == 4

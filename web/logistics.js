@@ -107,10 +107,13 @@ export function openPipeEnds(state) {
     return !next?.faces.includes(OPPOSITE[face]) && !state.graph.ports.some(port => sameCell(port.cell, cell) && port.face === OPPOSITE[face]);
   }).map(face => ({ id: `${pipe.id}/${face}`, pipeId: pipe.id, frameId: pipe.frameId, kind: 'pipe', label: pipe.frameId ? `Стеллаж ${pipe.frameId.slice(7)} · конец трубы` : 'Внешняя труба', cell: {x:pipe.x,y:pipe.y,z:pipe.z}, face, neighbor: adjacent(pipe, face) })));
 }
+export function rackAtCell(state,world) {
+  return state.objects.find(frame=>{if(frame.type!=='frame')return false;const c=localCell(frame,world),d=localSize(frame);return c.x>=0&&c.y>=0&&c.z>=0&&c.x<d.width&&c.y<d.depth&&c.z<d.height;});
+}
 export function pipeScope(state, frameId) {
   return frameId ? state.objects.find(item => item.id === frameId && item.type === 'frame')?.pipes : state.pipes;
 }
-export function canonicalPipe(pipe) { return { id: pipe.id, x: pipe.x, y: pipe.y, z: pipe.z, faces: [...pipe.faces] }; }
+export function canonicalPipe(pipe) { return { id: pipe.id, x: pipe.x, y: pipe.y, z: pipe.z, faces: [...pipe.faces], ...(pipe.rackIds?{rackIds:[...pipe.rackIds]}:{}) }; }
 export function pipeShapeError(pipe) {
   if (!pipe || ![pipe.x, pipe.y, pipe.z].every(Number.isInteger)) return 'Труба должна быть привязана к объёмной сетке';
   if (!Array.isArray(pipe.faces) || pipe.faces.length !== 2 || new Set(pipe.faces).size !== pipe.faces.length || pipe.faces.some(face => !Object.hasOwn(DIRECTIONS, face))) return 'Труба соединяет ровно две грани; ответвления запрещены';
@@ -125,7 +128,7 @@ export function pipeHitsPlayer(pipe, player) {
   const x = Math.max(pipe.x, Math.min(player.x, pipe.x + 1)), y = Math.max(pipe.y, Math.min(player.y, pipe.y + 1));
   return (player.x - x) ** 2 + (player.y - y) ** 2 < PLAYER.radius ** 2 - 1e-9;
 }
-export function networkError(state, checkPlayer = true) {
+export function networkError(state, checkPlayer = true, allowLegacy = false) {
   if (state.pipes !== undefined && !Array.isArray(state.pipes)) return 'Некорректный список труб';
   const next = state.nextPipeId ?? 1, ids = new Set(), occupied = new Set();
   if (!Number.isSafeInteger(next) || next < 1) return 'Некорректный счётчик труб';
@@ -140,6 +143,11 @@ export function networkError(state, checkPlayer = true) {
       if (typeof pipe.id !== 'string' || !/^pipe-[1-9]\d*$/.test(pipe.id) || ids.has(pipe.id) || Number(pipe.id.slice(5)) >= next) return 'Некорректный идентификатор трубы';
       if (pipe.x < 0 || pipe.y < 0 || pipe.z < 0 || pipe.x >= bounds.width || pipe.y >= bounds.depth || pipe.z >= bounds.height) return group.frame ? 'Труба выходит за границы каркаса' : 'Труба выходит за границы вагона';
       const world = worldPipe(group.frame, pipe), key = cellKey(world);
+      if(!group.frame&&!allowLegacy){
+        if(!Array.isArray(pipe.rackIds)||pipe.rackIds.length!==2||new Set(pipe.rackIds).size!==2||pipe.rackIds.some(id=>!state.objects.some(o=>o.type==='frame'&&o.id===id)))return 'Труба должна принадлежать соединению двух стеллажей';
+        if(rackAtCell(state,world))return 'Внутренняя труба должна принадлежать своему стеллажу';
+      }
+
       if (occupied.has(key)) return 'Ячейка уже занята трубой';
       if (world.x < 0 || world.y < 0 || world.z < 0 || world.x >= WAGON.width || world.y >= WAGON.depth || world.z >= WAGON.height) return 'Труба выходит за границы вагона';
       if (solids.some(object => inside(world, object))) return 'Труба пересекается с оборудованием или сооружением';

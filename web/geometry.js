@@ -7,6 +7,7 @@ export const TYPES = Object.freeze({
   workbench: Object.freeze({ name: 'Верстак', short: 'Верстак', width: 4, depth: 3, height: 4, color: '#8db6bc', icon: '⊟', category: 'Свободное сооружение' })
 });
 export const EQUIPMENT = Object.freeze({
+  storage: TYPES.storage, workbench: TYPES.workbench,
   machine: Object.freeze({ name: 'Тестовый модуль', short: 'Модуль', width: 2, depth: 2, height: 2, color: '#88c5ce' }),
   filter: Object.freeze({ name: 'Фильтр', short: 'Фильтр', width: 2, depth: 2, height: 3, color: '#e9ce75' }),
   centrifuge: Object.freeze({ name: 'Центрифуга', short: 'Центрифуга', width: 2, depth: 2, height: 3, color: '#ce9ab6' }),

@@ -31,13 +31,13 @@ def run(page,phone=False):
     expect(inspector.locator('h3')).to_contain_text('Бак')
     expect(inspector.locator('.resource-stock')).to_contain_text('Чистая нефть')
     # Stock in a full pipe is protected from the eraser and can be explicitly recovered.
-    filled_id=next(id for id,tokens in sim()['pipes'].items()if tokens and next(p for p in state()['pipes']if p['id']==id)['z']<4)
-    pipe=next(p for p in state()['pipes']if p['id']==filled_id)
-    local={'x':pipe['x']-frame()['x']+.5,'y':pipe['y']-frame()['y']+.5,'z':pipe['z']+.5}
+    filled_id=next(id for id,tokens in sim()['pipes'].items()if tokens and next(p for p in frame()['pipes']if p['id']==id)['z']<4)
+    pipe=next(p for p in frame()['pipes']if p['id']==filled_id)
+    local={'x':pipe['x']+.5,'y':pipe['y']+.5,'z':pipe['z']+.5}
     if not phone:
         page.keyboard.press('Backspace');click_shelf(page,frame(),local['x'],local['y'])
         expect(page.locator('#editor-message')).to_contain_text('забери')
-        assert any(p['id']==filled_id for p in state()['pipes'])
+        assert any(p['id']==filled_id for p in frame()['pipes'])
         page.keyboard.press('Escape');click_shelf(page,frame(),local['x'],local['y'])
         inspector.locator('[data-resource-collect]').click()
         assert not sim()['pipes'].get(filled_id)
@@ -59,7 +59,7 @@ def run(page,phone=False):
     inspector.locator('[data-apparatus-toggle]').click()
     for _ in range(8):step.click()
     assert sim()['containers'][owner(3)]['stored'].get('clean',0)>0
-    saved=state();assert saved['version']==5
+    saved=state();assert saved['version']==6
     page.reload();page.wait_for_selector('.catalog-card',state='attached');assert state()==saved
     if not phone:page.screenshot(path='/workspace/shared/trail-stage4-wagon.png')
     page.locator('#world-simulation [data-production-demo]').click()
@@ -77,4 +77,4 @@ with sync_playwright() as p:
     run(browser.new_page(viewport={'width':1600,'height':1000}))
     run(browser.new_page(viewport={'width':390,'height':844},is_mobile=True,has_touch=True),True)
     browser.close()
-    print('PASS: native demo/start/pause/step; production/colored contents; filled pipe protection and recovery; output collection/resume; v5 reload; original layout restored; desktop/mobile without JS errors')
+    print('PASS: native demo/start/pause/step; production/colored contents; filled pipe protection and recovery; output collection/resume; v6 reload; original layout restored; desktop/mobile without JS errors')
