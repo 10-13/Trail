@@ -98,26 +98,26 @@ summary { cursor: pointer; color: var(--accent); margin-bottom: 8px; }
 .touch-pad button:nth-child(3) { grid-column: 2; grid-row: 2; }
 .touch-pad button:nth-child(4) { grid-column: 3; grid-row: 2; }
 /* Projection sizes share a physical scale; tools live in the unused corner. */
-#frame-editor { position: fixed; inset: 0; width: 100%; height: 100dvh; display: flex; flex-direction: column; color: var(--text); background: var(--surface); }
-.editor-workspace { flex: 1; min-width: 0; min-height: 0; padding: 6px; overflow: hidden; display: flex; }
-.editor-views { display: grid; gap: 6px; flex: 1; min-width: 0; min-height: 0; grid-template-areas: 'xz yz' 'xy properties'; }
-.editor-views[data-top-side=right] { grid-template-areas: 'xz yz' 'properties xy'; }
-.ortho-view[data-plane=xy] { grid-area: xy; }
-.ortho-view[data-plane=xz] { grid-area: xz; }
-.ortho-view[data-plane=yz] { grid-area: yz; }
-.ortho-view { position: relative; display: flex; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--line); }
-.ortho-view canvas { display: block; width: 100%; height: 100%; min-height: 0; touch-action: none; }
-.view-name { position: absolute; top: 4px; left: 4px; color: var(--muted); pointer-events: none; }
-.editor-properties { grid-area: properties; overflow: auto; min-width: 0; min-height: 0; padding: 8px; border: 1px solid var(--line); }
-.editor-tools { position: sticky; top: 0; display: flex; flex-wrap: wrap; gap: 4px; background: var(--surface); border: 0; padding: 0 0 8px; z-index: 1; }
-#item-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 8px; }
-#item-fields .field { display: block; }
+#frame-editor { position: fixed; inset: 0; display: flex; flex-direction: column; color: var(--text); background: var(--surface); }
+.shelf-toolbar { flex-shrink: 0; padding: 6px 8px; border-bottom: 1px solid var(--line); background: var(--surface); z-index: 2; }
+.shelf-header-row { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; margin-bottom: 5px; }
+#rack-title { color: var(--accent); margin-right: auto; }
+.shelf-picker { display: flex; align-items: center; gap: 5px; }
+#shelf-select { width: 165px; }
+#shelf-usage { margin-left: auto; }
+#shelf-scene { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+#shelf-canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.shelf-zoom { position: absolute; right: 8px; bottom: 8px; display: flex; gap: 4px; }
+#shelf-inspector { position: absolute; top: var(--shelf-popover-top,130px); right: 8px; padding: 8px; width: min(330px,calc(100% - 16px)); max-height: calc(100% - var(--shelf-popover-top,130px) - 52px); overflow: auto; z-index: 3; }
+#item-fields { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 5px; margin-top: 8px; }
+#item-fields .field { display: block; margin: 0; }
 #item-fields .field-label { display: block; }
+#frame-editor .shelf-popover { position: absolute; top: var(--shelf-popover-top,130px); bottom: auto; left: 8px; right: auto; padding: 8px; width: min(300px,calc(100% - 16px)); max-height: calc(100% - var(--shelf-popover-top,130px) - 40px); overflow: auto; z-index: 4; }
+#shelf-height-fields { margin: 12px 0; padding: 8px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+#shelf-height-total { margin: 6px 0; }
+#editor-menu details { margin-top: 10px; }
 #editor-message { min-height: 24px; padding: 4px 8px; border-top: 1px solid var(--line); flex-shrink: 0; }
-#editor-menu { bottom: 32px; z-index: 3; }
-#brush-fields { margin: 8px 0; }
-#editor-frame-options { margin-top: 16px; }
-#editor-frame-options p { margin-top: 8px; }
+#neighbor-connections select { margin-bottom: 6px; }
 body[data-screen=editor] .toast { top: auto; bottom: 32px; }
 @media (pointer: coarse) {
   button { min-height: 30px; }
@@ -211,4 +211,6 @@ body[data-screen=editor] .toast { top: auto; bottom: 32px; }
 @media(max-width:700px){ #world-simulation { top: 152px; max-width: calc(100% - 16px); } #world-network { top: 220px; } .simulation-controls { gap: 4px; } .simulation-clock { font-size: 10px; } }
 
 .hud.menu-open #world-simulation { visibility: hidden; }
-#frame-editor[data-menu-side=right] #editor-menu { left: auto; right: 8px; }
+
+
+@media(max-width:700px){ .shelf-toolbar { padding: 4px; } #shelf-select { width: 138px; } #shelf-usage { width: 100%; margin-left: 0; } .shelf-tools button { padding: 3px 5px; } }

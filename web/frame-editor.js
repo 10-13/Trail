@@ -1,419 +1,187 @@
-import { ensureSimulation, pipeTokens } from './simulation.js';
+import { ensureSimulation, pipeTokens, collectResources } from './simulation.js';
 import { createSimulationControls, createProductionInspector, drawProductionGlyph } from './production-ui.js';
-import { EQUIPMENT, dimensions, localSize, equipmentPlacementError, putEquipment, removeEquipment, updateFrame, updatePorts, putPipe, pipePlacementError, paintPipeRoute, removePipe, findPipe, updatePipeFaces, connectEndpoints } from './core.js';
+import { EQUIPMENT, dimensions, localSize, equipmentPlacementError, putEquipment, removeEquipment, setFrameShelves, updatePorts, putPipe, pipePlacementError, paintPipeRoute, removePipe, findPipe, updatePipeFaces, connectEndpoints, connectShelfLevels, removePipeColumn, pipeColumnIds } from './core.js';
 import { rotateObject } from './geometry.js';
+import { shelvesOf, shelfForItem, shelfUsage } from './shelves.js';
 import { el, numberField, readVoxels } from './ui.js';
 import { rotateFace, pipesInFrame, localFace, portsInFrame, neighboringConnections, worldPipe, DIRECTIONS, openPipeEnds, localCell } from './logistics.js';
 import { createRotationControl, createPipePalette, createPortsEditor, createPipeInspector, createNetworkPanel, drawProjectedPipe, drawProjectedPort } from './network-ui.js';
 
-const PLANES = [
-  { key: 'xz', title: 'Вдоль поезда', axes: ['x', 'z'], depth: 'y', sizes: ['width', 'height'], flip: true },
-  { key: 'yz', title: 'Поперёк поезда', axes: ['y', 'z'], depth: 'x', sizes: ['depth', 'height'], flip: true },
-  { key: 'xy', title: 'Сверху', axes: ['x', 'y'], depth: 'z', sizes: ['width', 'depth'], flip: false }
-];
-const SIZE_KEY = { x: 'width', y: 'depth', z: 'height' };
-const meter = value => (value / 4).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
-const $ = id => document.getElementById(id);
-
-export function createFrameEditor({ getState, onChange, onClose, onSimulationStep, onSimulationChange, onDemo, demoActive, getSimulationMetrics }) {
-  const screen = $('frame-editor'), wagon = $('viewport'), hud = document.querySelector('.hud');
-  let frameId = null, selectedId = null, draft = null, drag = null, brush = null, erase = false, menuOpen = false;
-  let pointerView = null, pointerPoint = null, hoverId = null, stroke = null, movingId = null;
-  let selectedPipeId = null, pipeAnchor = null, highlightedPipes = new Set();
-  const layers = { x: 0, y: 0, z: 0 }, views = [], inputs = {}, frameInputs = {}, brushInputs = {};
-  const frame = () => getState().objects.find(item => item.id === frameId);
-  const selected = () => frame()?.children.find(item => item.id === selectedId);
-  const equipmentError = (unused, item, ignoreId = null) => equipmentPlacementError(getState(), frameId, item, ignoreId);
-  const message = (text = '', invalid = false) => { $('editor-message').textContent = text; $('editor-message').classList.toggle('error', invalid); };
-  const simulationControls=createSimulationControls($('editor-simulation'),{getMetrics:getSimulationMetrics,getState,changed:onSimulationChange,step:onSimulationStep,demo:onDemo,demoActive});
+const $=id=>document.getElementById(id);
+const meter=n=>(n/4).toLocaleString('ru-RU');
+export function createFrameEditor({getState,onChange,onClose,onSimulationStep,onSimulationChange,onDemo,demoActive,getSimulationMetrics}){
+  const screen=$('frame-editor'),canvas=$('shelf-canvas'),ctx=canvas.getContext('2d'),wagon=$('viewport'),hud=document.querySelector('.hud');
+  let frameId=null,shelfId=null,selectedId=null,selectedPipeId=null,brush=null,erase=false,draft=null,pointer=null,stroke=null,drag=null,movingId=null,pipeAnchor=null,continueAnchor=false,connectionStart=null;
+  let zoom=1,pan={x:0,y:0},highlightedPipes=new Set(),heightInputs=[],nearby=[],ownConnections=[];
+  const view={axes:['x','y'],flip:false,scale:1,ox:0,oy:0,width:1,height:1};
+  const inputs={},brushInputs={},frameInputs={};
+  const frame=()=>getState().objects.find(o=>o.id===frameId);
+  const shelf=()=>shelvesOf(frame()).find(s=>s.id===shelfId)||shelvesOf(frame())[0];
+  const selected=()=>frame()?.children.find(o=>o.id===selectedId);
+  const message=(text='',error=false)=>{$('editor-message').textContent=text||'Tab — блоки · ⌫ — удаление · PageUp / PageDown — полки · пустое место — перетащить вид';$('editor-message').classList.toggle('error',error);};
+  const simulationControls=createSimulationControls($('editor-simulation'),{getState,changed:onSimulationChange,step:onSimulationStep,demo:onDemo,demoActive,getMetrics:getSimulationMetrics});
   const productionInspector=createProductionInspector($('item-production'),{getState,getSelection:()=>!brush&&!erase?(selectedPipeId?{pipeId:selectedPipeId}:selected()?{owner:`${frameId}/${selectedId}`,type:selected().type}:null):null,changed,message});
-  const portsEditor = createPortsEditor($('item-ports'), {
-    getObject: () => !brush && !erase ? selected() : null,
-    apply: (ports, next) => updatePorts(getState(), frameId, selectedId, ports, next), changed, message
+  const portsEditor=createPortsEditor($('item-ports'),{getObject:()=>!brush&&!erase?selected():null,apply:(ports,next)=>updatePorts(getState(),frameId,selectedId,ports,next),changed,message});
+  const localPipes=()=>pipesInFrame(getState(),frame());
+  const selectedPipe=()=>localPipes().find(p=>p.id===selectedPipeId);
+  function applyFaces(faces){const found=findPipe(getState(),selectedPipeId),owner=found?.frameId?getState().objects.find(o=>o.id===found.frameId):null;return updatePipeFaces(getState(),selectedPipeId,faces.map(f=>localFace(owner,rotateFace(f,frame()))));}
+  const pipeInspector=createPipeInspector($('editor-pipe-inspector'),{getPipe:()=>!brush&&!erase?selectedPipe():null,apply:applyFaces,changed,message});
+  const rotationAxis=createRotationControl($('editor-rotation'),rotate);
+  const networkPanel=createNetworkPanel($('editor-network'),{getState,onHighlight:ids=>{highlightedPipes=ids;draw();}});
+  for(const [key,name,max]of [['width','Длина, м',12],['depth','Ширина, м',3],['height','Высота, м',2.5]]){
+    const field=numberField(name,`item-${key}`,.5,.25,max);inputs[key]=field.input;$('item-fields').append(field.row);
+    const tool=numberField(name,`brush-${key}`,.5,.25,max);brushInputs[key]=tool.input;$('brush-fields').append(tool.row);
+    if(key!=='height'){const setting=numberField(name,`edit-frame-${key}`,1,.25,max);frameInputs[key]=setting.input;$('frame-size-fields').append(setting.row);}
+  }
+  createPipePalette($('editor-pipe-palette'),config=>{brush={...config,z:shelf().z,rotation:0};erase=false;movingId=null;clearSelection();closePopovers();pipeAnchor=null;refresh();message('Веди трубу по полке. Для перехода выбери «Труба ↑» или «Труба ↓».');canvas.focus();});
+
+  const neighbors=el('details','nearby-connections'),neighborSummary=el('summary'),ownSelect=el('select'),neighborSelect=el('select'),connect=el('button','','Проложить соединение');
+  ownSelect.setAttribute('aria-label','Подключение этого стеллажа');neighborSelect.setAttribute('aria-label','Соседнее подключение');connect.type='button';connect.dataset.connectFrames='';
+  neighbors.append(neighborSummary,ownSelect,neighborSelect,connect);$('neighbor-connections').append(neighbors);
+  neighbors.ontoggle=()=>draw();neighborSelect.onchange=()=>draw();
+  const toWorld=p=>({...p,cell:worldPipe(frame(),{...p.cell,faces:[]}),neighbor:worldPipe(frame(),{...p.neighbor,faces:[]}),face:rotateFace(p.face,frame())});
+  connect.onclick=()=>{const a=ownConnections.find(p=>p.id===ownSelect.value),b=nearby.find(p=>p.id===neighborSelect.value);if(a&&b){const error=connectEndpoints(getState(),toWorld(a),toWorld(b));if(error)message(error,true);else{changed();message('Соединение проложено');}}};
+  function refreshNeighbors(){
+    nearby=neighboringConnections(getState(),frame());ownConnections=portsInFrame(getState(),frame()).filter(p=>p.frameId===frameId&&onShelf(p.cell.z));
+    ownConnections.push(...openPipeEnds(getState()).map(p=>({...p,cell:localCell(frame(),p.cell),neighbor:localCell(frame(),p.neighbor),face:localFace(frame(),p.face)})).filter(p=>p.cell.x>=0&&p.cell.y>=0&&p.cell.x<view.width&&p.cell.y<view.height&&onShelf(p.cell.z)));
+    neighborSummary.textContent=`Соседние подключения · ${nearby.length}`;
+    for(const [select,points]of [[ownSelect,ownConnections],[neighborSelect,nearby]]){const previous=select.value;select.replaceChildren();for(const p of points){const option=el('option','',`${p.label} · ${p.kind==='input'?'вход':p.kind==='output'?'выход':'труба'} · ${meter(p.cell.z)} м`);option.value=p.id;select.append(option);}if(points.some(p=>p.id===previous))select.value=previous;}
+    connect.disabled=!nearby.length||!ownConnections.length;
+  }
+  function onShelf(z){return z>=shelf().z&&z<shelf().z+shelf().height;}
+  function clearSelection(){selectedId=selectedPipeId=null;}
+  function closePopovers(){$('editor-menu').hidden=$('shelf-settings').hidden=true;$('editor-menu-button').setAttribute('aria-expanded','false');$('shelf-settings-button').setAttribute('aria-expanded','false');}
+  function clearTool(){cancelGesture();brush=draft=null;erase=false;movingId=null;pipeAnchor=null;continueAnchor=false;connectionStart=null;closePopovers();refresh();message();}
+  function changed(){onChange();refresh();}
+  function switchShelf(id){cancelGesture();shelfId=id;clearSelection();pipeAnchor=null;continueAnchor=false;draft=null;if(brush?.type!=='connect')connectionStart=null;if(brush?.type==='riser')brush=null;refresh();message();}
+  function stepShelf(delta){const all=shelvesOf(frame()),index=all.findIndex(s=>s.id===shelf().id),next=all[index+delta];if(next)switchShelf(next.id);}
+  function refresh(){
+    if(!frame())return;
+    const all=shelvesOf(frame());if(!all.some(s=>s.id===shelfId))shelfId=all[0].id;
+    const active=shelf(),size=localSize(frame()),usage=shelfUsage(frame(),active,localPipes());view.width=size.width;view.height=size.depth;
+    $('rack-title').textContent=`Стеллаж ${frameId.slice(7)}`;
+    for(const select of [$('shelf-select'),$('item-shelf-select')]){select.replaceChildren();for(const [i,s]of all.entries()){const option=el('option','',`Полка ${i+1} · ${meter(s.height)} м`);option.value=s.id;select.append(option);}select.value=select.id==='shelf-select'?active.id:(selected()?.shelfId||shelfForItem(frame(),selected()||{z:active.z,type:'pipe'})?.id||active.id);}
+    $('shelf-usage').textContent=`Высота ${meter(active.height)} м · свободно ${usage.free} / ${usage.total} ячеек`;
+    $('shelf-riser-up').disabled=all.at(-1).id===active.id;$('shelf-riser-down').disabled=all[0].id===active.id;
+    for(const [id,direction]of [['shelf-riser-up',1],['shelf-riser-down',-1]])$(id).classList.toggle('active',brush?.type==='riser'&&brush.direction===direction);
+    $('editor-erase').classList.toggle('active',erase);$('editor-erase').setAttribute('aria-pressed',erase);
+    const item=selected();$('item-form').hidden=!item||!!brush||erase;
+    $('shelf-inspector').hidden=(!item&&!selectedPipeId)||!!brush||erase;
+    if(item){$('item-title').textContent=EQUIPMENT[item.type].name;for(const [key,input]of Object.entries(inputs))input.value=item[key]/4;}
+    for(const [key,input]of Object.entries(brushInputs)){input.max=(key==='height'?active.height:key==='width'?size.width:size.depth)/4;if(input.valueAsNumber>Number(input.max))input.value=input.max;}
+    $('collect-column').hidden=!selectedPipe()?.faces.some(f=>f==='nz'||f==='pz');
+    productionInspector.refresh();portsEditor.refresh();pipeInspector.refresh();simulationControls.refresh();refreshNeighbors();networkPanel.refresh();draw();
+  }
+  function toggleMenu(){const opening=$('editor-menu').hidden;closePopovers();$('editor-menu').hidden=!opening;$('editor-menu-button').setAttribute('aria-expanded',opening);if(opening)$('close-editor-menu').focus();else canvas.focus();}
+  function settings(){const opening=$('shelf-settings').hidden;closePopovers();$('shelf-settings').hidden=!opening;$('shelf-settings-button').setAttribute('aria-expanded',opening);if(opening){for(const [k,input]of Object.entries(frameInputs))input.value=frame()[k]/4;$('edit-frame-mount').value=frame().mount;renderHeights(shelvesOf(frame()).map(s=>s.height));}}
+  function renderHeights(heights){$('shelf-height-fields').replaceChildren();heightInputs=[];for(const [i,h]of heights.entries()){const field=numberField(`Полка ${i+1}, м`,`shelf-height-${i+1}`,h/4,.25,2.5);field.input.oninput=heightTotal;heightInputs.push(field.input);$('shelf-height-fields').append(field.row);}heightTotal();}
+  function heightTotal(){const total=heightInputs.reduce((n,i)=>n+(i.valueAsNumber||0),0);$('shelf-height-total').textContent=`Общая высота: ${total.toLocaleString('ru-RU')} / 2,5 м`;$('remove-shelf').disabled=heightInputs.length<2;$('add-shelf').disabled=heightInputs.length>=10;}
+  $('add-shelf').onclick=()=>{try{const h=heightInputs.map(readVoxels),last=h.pop();if(last>=2){const lower=Math.ceil(last/2);h.push(lower,last-lower);}else if(h.reduce((a,b)=>a+b,0)+2<=10)h.push(1,1);else{message('Увеличь высоту верхней полки, чтобы разделить её',true);return;}renderHeights(h);}catch(error){message(error.message,true);}};
+  $('remove-shelf').onclick=()=>{try{const h=heightInputs.map(readVoxels);if(h.length>1){const last=h.pop();h[h.length-1]+=last;renderHeights(h);}}catch(error){message(error.message,true);}};
+  $('frame-form').onsubmit=event=>{event.preventDefault();try{const heights=heightInputs.map(readVoxels);if(heights.reduce((a,b)=>a+b,0)>10){message('Стеллаж должен помещаться в высоту 2,5 м',true);return;}const params={mount:$('edit-frame-mount').value};for(const [k,input]of Object.entries(frameInputs))params[k]=readVoxels(input);const error=setFrameShelves(getState(),frameId,heights,params);if(error)message(error,true);else{changed();closePopovers();message('Разметка полок сохранена');}}catch(error){message(error.message,true);}};
+  function choose(type){try{const size=Object.fromEntries(Object.entries(brushInputs).map(([k,input])=>[k,readVoxels(input)]));size.height=Math.min(size.height,shelf().height);brush={type,...size,rotation:0,z:shelf().z,shelfId:shelf().id};erase=false;movingId=null;clearSelection();draft=null;closePopovers();refresh();message('Нажимай или веди кисть по полке. R — повернуть.');canvas.focus();}catch(error){message(error.message,true);}}
+  for(const button of document.querySelectorAll('[data-equipment-type]'))button.onclick=()=>choose(button.dataset.equipmentType);
+  function chooseRiser(direction){brush={type:'riser',direction};erase=false;movingId=null;clearSelection();draft=null;closePopovers();refresh();message(`Нажми, где труба должна перейти на полку ${direction>0?'выше':'ниже'}`);canvas.focus();}
+  function toggleErase(){cancelGesture();erase=!erase;brush=draft=null;movingId=null;clearSelection();closePopovers();pipeAnchor=null;continueAnchor=false;refresh();message(erase?'Нажимай на блоки и трубы для удаления':'');canvas.focus();}
+  function updateDraft(){
+    if(!brush||!pointer||brush.type==='connect'){draft=null;return;}
+    if(brush.type==='riser'||brush.type==='pipe')draft={...brush,x:Math.floor(pointer.x),y:Math.floor(pointer.y),z:shelf().z};
+    else{const size=dimensions(brush);draft={...brush,x:Math.floor(pointer.x-size.width/2+1e-8),y:Math.floor(pointer.y-size.depth/2+1e-8),z:shelf().z,shelfId:shelf().id};}
+  }
+  function draftError(){if(!draft)return '';if(draft.type==='riser')return connectShelfLevels(getState(),frameId,shelfId,draft.x,draft.y,draft.direction,true);if(draft.type==='pipe')return draft.autoRoute?paintPipeRoute(getState(),frameId,pipeAnchor,draft,true):pipePlacementError(getState(),draft,frameId);return equipmentPlacementError(getState(),frameId,draft,movingId||selectedId);}
+  function itemAt(p){return [...frame().children].reverse().find(item=>{const d=dimensions(item);return item.z<shelf().z+shelf().height&&item.z+d.height>shelf().z&&p.x>=item.x&&p.y>=item.y&&p.x<item.x+d.width&&p.y<item.y+d.depth;});}
+  function pipeAt(p){return localPipes().filter(pipe=>onShelf(pipe.z)&&pipe.x===Math.floor(p.x)&&pipe.y===Math.floor(p.y)).sort((a,b)=>Number(b.z===shelf().z)-Number(a.z===shelf().z)||a.z-b.z)[0];}
+  function portAt(p){const candidates=portsInFrame(getState(),frame()).filter(port=>port.frameId===frameId&&onShelf(port.cell.z));return candidates.find(port=>{const v=DIRECTIONS[port.face];return Math.hypot(port.cell.x+.5+v[0]/2-p.x,port.cell.y+.5+v[1]/2-p.y)<Math.max(.25,9/view.scale);});}
+  function applyBrush(){
+    updateDraft();const key=draft?`${draft.x},${draft.y},${draft.z}`:`${Math.floor(pointer.x)},${Math.floor(pointer.y)}`;if(stroke?.cells.has(key))return;stroke?.cells.add(key);
+    if(erase){const pipe=pipeAt(pointer);if(pipe){const error=pipe.faces.some(f=>f==='nz'||f==='pz')?removePipeColumn(getState(),pipe.id,frameId):removePipe(getState(),pipe.id);if(error)message(error,true);else changed();return;}const item=itemAt(pointer);if(item){const error=removeEquipment(getState(),frameId,item.id);if(error)message(error,true);else changed();}return;}
+    if(!draft)return;
+    if(draft.type==='riser'){
+      const error=connectShelfLevels(getState(),frameId,shelfId,draft.x,draft.y,draft.direction);if(error){message(error,true);return;}
+      const all=shelvesOf(frame()),target=all[all.findIndex(s=>s.id===shelfId)+draft.direction];shelfId=target.id;pipeAnchor={x:draft.x,y:draft.y,z:target.z};continueAnchor=true;brush={type:'pipe',autoRoute:true,faces:['nx','px'],rotation:0};draft=null;stroke=null;changed();message('Переход готов. Продолжи трубу на этой полке.');return;
+    }
+    const error=draft.type==='pipe'?(draft.autoRoute?paintPipeRoute(getState(),frameId,pipeAnchor,draft):putPipe(getState(),draft,frameId)):putEquipment(getState(),frameId,draft,movingId);
+    if(error){message(error,true);return;}
+    if(draft.type==='pipe')pipeAnchor={x:draft.x,y:draft.y,z:draft.z};
+    if(movingId){selectedId=movingId;brush=draft=null;movingId=null;stroke=null;}
+    changed();message('Установлено');
+  }
+  function point(event){const r=canvas.getBoundingClientRect();return{x:(event.clientX-r.left-view.ox)/view.scale,y:(event.clientY-r.top-view.oy)/view.scale};}
+  canvas.addEventListener('pointerdown',event=>{
+    if(event.button!==0&&event.button!==1)return;event.preventDefault();canvas.focus();pointer=point(event);
+    if(event.button===1){drag={kind:'pan',start:{x:event.clientX,y:event.clientY},pan:{...pan},pointerId:event.pointerId};canvas.setPointerCapture(event.pointerId);return;}
+    if(brush?.type==='connect'){const port=portAt(pointer);if(!port){message('Нажми на цветной порт блока',true);return;}if(!connectionStart){connectionStart=port;message('Теперь выбери второй порт на этой или другой полке');}else{const start=portsInFrame(getState(),frame()).find(p=>p.id===connectionStart.id);if(!start){connectionStart=null;message('Первый порт изменился. Выбери его снова',true);return;}const error=connectEndpoints(getState(),toWorld(start),toWorld(port));if(error)message(error,true);else{connectionStart=null;changed();message('Блоки соединены');}}draw();return;}
+    if(brush||erase){if(!continueAnchor)pipeAnchor=null;continueAnchor=false;stroke={cells:new Set(),pointerId:event.pointerId};canvas.setPointerCapture(event.pointerId);applyBrush();draw();return;}
+    const pipe=pipeAt(pointer),item=itemAt(pointer);if(pipe){selectedPipeId=pipe.id;selectedId=null;refresh();return;}
+    selectedPipeId=null;
+    if(item){selectedId=item.id;drag={kind:'item',original:{...item},start:{...pointer},pointerId:event.pointerId};refresh();}
+    else{clearSelection();drag={kind:'pan',start:{x:event.clientX,y:event.clientY},pan:{...pan},pointerId:event.pointerId};refresh();}
+    canvas.setPointerCapture(event.pointerId);
   });
-  const pipeInspector = createPipeInspector($('editor-pipe-inspector'), {
-    getPipe: () => !brush && !erase && selectedPipeId ? pipesInFrame(getState(), frame()).find(pipe => pipe.id === selectedPipeId) : null,
-    apply: faces => { const found = findPipe(getState(), selectedPipeId); const owner = found?.frameId ? getState().objects.find(item => item.id === found.frameId) : null; return updatePipeFaces(getState(), selectedPipeId, faces.map(face => localFace(owner, rotateFace(face, frame())))); }, changed, message
+  canvas.addEventListener('pointermove',event=>{
+    pointer=point(event);
+    if(drag?.kind==='pan'){pan={x:drag.pan.x+event.clientX-drag.start.x,y:drag.pan.y+event.clientY-drag.start.y};draw();return;}
+    if(drag?.kind==='item'){draft={...drag.original,x:drag.original.x+Math.round(pointer.x-drag.start.x),y:drag.original.y+Math.round(pointer.y-drag.start.y),z:shelf().z,shelfId:shelfId};const error=equipmentPlacementError(getState(),frameId,draft,selectedId);message(error||'Отпусти, чтобы переместить',!!error);draw();return;}
+    if(stroke&&(event.buttons&1))applyBrush();else updateDraft();canvas.style.cursor=brush||erase?'crosshair':itemAt(pointer)?'move':'grab';draw();
   });
-  let nearby = [], ownConnections = [];
-  const neighborDetails=el('details','nearby-connections'), neighborSummary=el('summary'), neighborBody=el('div','network-links');
-  const ownSelect=el('select'), neighborSelect=el('select'), connectButton=el('button','','Проложить соединение');
-  ownSelect.setAttribute('aria-label','Подключение этого каркаса');neighborSelect.setAttribute('aria-label','Соседнее подключение');connectButton.type='button';connectButton.dataset.connectFrames='';
-  const ownLabel=el('label','field'),neighborLabel=el('label','field');ownLabel.append(el('span','field-label','В этом каркасе'),ownSelect);neighborLabel.append(el('span','field-label','Рядом'),neighborSelect);
-  neighborBody.append(ownLabel,neighborLabel,connectButton,el('p','muted','Порты и свободные концы соседних труб отмечены у границ видов. Соединение прокладывается и в промежутке между каркасами.'));
-  neighborDetails.append(neighborSummary,neighborBody);$('neighbor-connections').append(neighborDetails);
-  neighborDetails.ontoggle=()=>drawAll();
-  function focusConnection(){const port=ownConnections.find(p=>p.id===ownSelect.value);if(port)syncLayers(port.cell);drawAll();}
-  ownSelect.onchange=neighborSelect.onchange=focusConnection;
-  connectButton.onclick=()=>{
-    const first=ownConnections.find(p=>p.id===ownSelect.value),second=nearby.find(p=>p.id===neighborSelect.value);
-    if(!first||!second)return;
-    const error=connectEndpoints(getState(),toWorldEndpoint(first),toWorldEndpoint(second));
-    if(!error){changed();message('Каркасы соединены. Труба проходит через промежуток между ними.');}else message(error,true);
-  };
-  function toWorldEndpoint(point){return {...point,cell:worldPipe(frame(),{...point.cell,faces:[]}),neighbor:worldPipe(frame(),{...point.neighbor,faces:[]}),face:rotateFace(point.face,frame())};}
-  function refreshNearby(){
-    nearby=neighboringConnections(getState(),frame());ownConnections=portsInFrame(getState(),frame()).filter(p=>p.frameId===frameId);
-    const bounds=localSize(frame());
-    ownConnections.push(...openPipeEnds(getState()).map(p=>({...p,cell:localCell(frame(),p.cell),neighbor:localCell(frame(),p.neighbor),face:localFace(frame(),p.face)})).filter(p=>p.cell.x>=0&&p.cell.y>=0&&p.cell.z>=0&&p.cell.x<bounds.width&&p.cell.y<bounds.depth&&p.cell.z<bounds.height));
-    neighborSummary.textContent=`Рядом: ${nearby.length} подключений`;
-    const fill=(select,points,isOwn)=>{
-      const old=select.value;select.replaceChildren();
-      for(const [i,p]of points.entries()){const option=el('option','',`${isOwn?'':`${i+1}. `}${p.label} · ${p.kind==='pipe'?'труба':p.kind==='input'?'вход':'выход'} · ${meter(p.cell.z)} м${p.attached?' · подключён':''}`);option.value=p.id;select.append(option);}
-      if(points.some(p=>p.id===old))select.value=old;else if(isOwn&&points.some(p=>p.kind==='output'))select.value=points.find(p=>p.kind==='output').id;
-    };fill(ownSelect,ownConnections,true);fill(neighborSelect,nearby,false);connectButton.disabled=!nearby.length||!ownConnections.length;
+  function endPointer(event){if(drag?.kind==='item'&&draft){const error=putEquipment(getState(),frameId,draft,selectedId);if(error)message(error,true);else{onChange();message('Блок перемещён');}}drag=null;draft=null;stroke=null;if(!continueAnchor)pipeAnchor=null;if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);refresh();}
+  canvas.addEventListener('pointerup',endPointer);canvas.addEventListener('pointercancel',()=>{cancelGesture();draw();});canvas.addEventListener('lostpointercapture',()=>{if(drag||stroke){cancelGesture();draw();}});canvas.addEventListener('pointerleave',()=>{if(!drag&&!stroke){draft=null;draw();}});canvas.addEventListener('contextmenu',event=>{event.preventDefault();clearTool();});
+  function cancelGesture(){const id=drag?.pointerId||stroke?.pointerId;drag=stroke=draft=null;if(id!==undefined&&canvas.hasPointerCapture(id))canvas.releasePointerCapture(id);}
+  function setZoom(value,anchor=null){const old=view.scale;zoom=Math.max(.5,Math.min(6,value));draw();if(anchor){pan.x+=(anchor.x-view.width/2)*(old-view.scale);pan.y+=(anchor.y-view.height/2)*(old-view.scale);draw();}}
+  canvas.addEventListener('wheel',event=>{event.preventDefault();setZoom(zoom*(event.deltaY<0?1.2:1/1.2),point(event));},{passive:false});
+  $('shelf-zoom-in').onclick=()=>setZoom(zoom*1.35);$('shelf-zoom-out').onclick=()=>setZoom(zoom/1.35);$('shelf-fit').onclick=()=>{zoom=1;pan={x:0,y:0};draw();};
+  function rotate(){const axis=rotationAxis();if(brush?.type==='pipe'){brush.faces=brush.faces.map(f=>rotateFace(f,rotateObject({rotation:0},axis)));updateDraft();refresh();return;}if(brush&&brush.type!=='riser'&&brush.type!=='connect'){brush=rotateObject(brush,axis);updateDraft();refresh();return;}if(selectedPipeId){const error=applyFaces(selectedPipe().faces.map(f=>rotateFace(f,rotateObject({rotation:0},axis))));if(error)message(error,true);else changed();return;}const item=selected();if(item){const error=putEquipment(getState(),frameId,{...rotateObject(item,axis),z:shelf().z,shelfId},item.id);if(error)message(error,true);else changed();}}
+  function moveSelected(){if(!selected())return;brush={...selected()};movingId=selectedId;erase=false;draft=null;refresh();message('Выбери место на этой или другой полке');}
+  $('item-form').onsubmit=event=>{event.preventDefault();const item=selected();if(!item)return;try{const candidate={...item,z:shelf().z,shelfId};for(const [key,input]of Object.entries(inputs))candidate[key]=readVoxels(input);const error=putEquipment(getState(),frameId,candidate,item.id);if(error)message(error,true);else{changed();message('Размеры применены');}}catch(error){message(error.message,true);}};
+  $('item-shelf-select').onchange=()=>{const item=selected(),target=shelvesOf(frame()).find(s=>s.id===$('item-shelf-select').value);if(!item||!target)return;const error=putEquipment(getState(),frameId,{...item,z:target.z,shelfId:target.id},item.id);if(error){refresh();message(error,true);}else{shelfId=target.id;changed();message('Блок перенесён на полку');}};
+  $('collect-column').onclick=()=>{for(const id of pipeColumnIds(getState(),selectedPipeId,frameId))if(pipeTokens(getState(),id).length)collectResources(getState(),id);changed();message('Содержимое перехода возвращено в запас');};
+  $('item-move').onclick=moveSelected;$('item-delete').onclick=toggleErase;$('editor-erase').onclick=toggleErase;$('editor-rotate').onclick=rotate;
+  $('editor-menu-button').onclick=toggleMenu;$('close-editor-menu').onclick=toggleMenu;$('shelf-settings-button').onclick=settings;$('close-shelf-settings').onclick=()=>closePopovers();$('shelf-select').onchange=()=>switchShelf($('shelf-select').value);
+  $('shelf-riser-up').onclick=()=>chooseRiser(1);$('shelf-riser-down').onclick=()=>chooseRiser(-1);$('close-shelf-inspector').onclick=()=>{clearSelection();refresh();};
+  $('connect-ports-tool').onclick=()=>{brush={type:'connect'};erase=false;clearSelection();closePopovers();connectionStart=null;refresh();message('Выбери выход, затем вход. Труба проложится автоматически.');};
+  function draw(){
+    if(screen.hidden||!frame())return;const area=canvas.getBoundingClientRect();if(!area.width||!area.height)return;
+    const dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(area.width*dpr);canvas.height=Math.round(area.height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);
+    const size=localSize(frame());view.width=size.width;view.height=size.depth;view.scale=Math.max(2,Math.min((area.width-64)/size.width,(area.height-64)/size.depth)*zoom);view.ox=(area.width-size.width*view.scale)/2+pan.x;view.oy=(area.height-size.depth*view.scale)/2+pan.y;
+    const {scale,ox,oy}=view,right=ox+size.width*scale,bottom=oy+size.depth*scale;
+    ctx.fillStyle='#111c23';ctx.fillRect(0,0,area.width,area.height);ctx.fillStyle='#16232a';ctx.fillRect(ox,oy,size.width*scale,size.depth*scale);
+    ctx.strokeStyle='#34454d';ctx.lineWidth=.5;ctx.beginPath();for(let x=1;x<size.width;x++){ctx.moveTo(ox+x*scale,oy);ctx.lineTo(ox+x*scale,bottom);}for(let y=1;y<size.depth;y++){ctx.moveTo(ox,oy+y*scale);ctx.lineTo(right,oy+y*scale);}ctx.stroke();
+    ctx.strokeStyle='#b9a270';ctx.lineWidth=1;ctx.strokeRect(ox,oy,size.width*scale,size.depth*scale);ctx.strokeStyle='#ec6262';ctx.beginPath();ctx.moveTo(ox,bottom);ctx.lineTo(right,bottom);ctx.stroke();
+    const objects=frame().children.filter(item=>item.z<shelf().z+shelf().height&&item.z+dimensions(item).height>shelf().z).sort((a,b)=>Number(a.id===selectedId)-Number(b.id===selectedId));
+    for(const item of objects){const box=boxFor(item),color=EQUIPMENT[item.type].color;ctx.save();ctx.globalAlpha=(drag?.kind==='item'&&item.id===selectedId)? .2 : 1;ctx.fillStyle=`${color}36`;ctx.strokeStyle=item.id===selectedId?'#edf4f6':color;ctx.lineWidth=item.id===selectedId?2:1;ctx.fillRect(box.x+1,box.y+1,box.width-2,box.height-2);ctx.strokeRect(box.x+1,box.y+1,box.width-2,box.height-2);drawProductionGlyph(ctx,item.type,box,ensureSimulation(getState()).containers[`${frameId}/${item.id}`]);if(scale>=23&&box.width>=58){ctx.fillStyle=color;ctx.font='10px monospace';ctx.textAlign='center';ctx.fillText(EQUIPMENT[item.type].short,box.x+box.width/2,box.y+box.height-8);}ctx.restore();}
+    const allLocalPipes=localPipes(),pipeCells=new Map(allLocalPipes.map(p=>[`${p.x},${p.y},${p.z}`,p])),buckets=new Map();for(const p of allLocalPipes.filter(p=>onShelf(p.z))){const key=`${p.x},${p.y}`;if(!buckets.has(key))buckets.set(key,[]);buckets.get(key).push(p);}
+    for(const list of buckets.values()){
+      const p=list.find(p=>p.id===selectedPipeId)||list.find(p=>p.z===shelf().z)||list[0];
+      drawProjectedPipe(ctx,p,view,{highlight:list.some(p=>highlightedPipes.has(p.id)||p.id===selectedPipeId),contents:list.flatMap(p=>pipeTokens(getState(),p.id)).slice(0,4)});
+      const up=list.some(p=>p.faces.includes('pz')&&p.z===shelf().z+shelf().height-1&&pipeCells.get(`${p.x},${p.y},${p.z+1}`)?.faces.includes('nz')),down=list.some(p=>p.faces.includes('nz')&&p.z===shelf().z&&pipeCells.get(`${p.x},${p.y},${p.z-1}`)?.faces.includes('pz'));
+      if(up||down){const x=ox+(p.x+.5)*scale,y=oy+(p.y+.5)*scale;ctx.fillStyle='#d6eee8';ctx.font=`bold ${Math.max(10,Math.min(16,scale*.5))}px monospace`;ctx.textAlign='center';ctx.fillText(up&&down?'↕':up?'↑':'↓',x,y+Math.min(6,scale*.2));}
+    }
+    for(const port of portsInFrame(getState(),frame()).filter(p=>p.frameId===frameId&&onShelf(p.cell.z)))drawProjectedPort(ctx,port,view,port.attached||port.id===connectionStart?.id);
+    if(neighbors.open)for(const [index,port]of nearby.entries()){
+      const cell={...port.cell},vector=DIRECTIONS[port.face];cell.x=Math.max(-.5-vector[0]/2,Math.min(size.width-.5-vector[0]/2,cell.x));cell.y=Math.max(-.5-vector[1]/2,Math.min(size.depth-.5-vector[1]/2,cell.y));
+      ctx.save();ctx.globalAlpha=port.id===neighborSelect.value?1:.35;drawProjectedPort(ctx,{...port,cell},view,port.attached);ctx.fillStyle='#d3dcdf';ctx.font='10px monospace';ctx.textAlign='left';ctx.fillText(String(index+1),ox+(cell.x+.5)*scale+5,oy+(cell.y+.5)*scale-5);ctx.restore();
+    }
+    if(draft){const error=draftError();if(draft.type==='pipe')drawProjectedPipe(ctx,draft,view,{preview:true,error:!!error});else if(draft.type==='riser'){const x=ox+draft.x*scale,y=oy+draft.y*scale;ctx.strokeStyle=error?'#ed8275':'#8ed8bf';ctx.lineWidth=2;ctx.strokeRect(x+2,y+2,scale-4,scale-4);ctx.fillStyle=ctx.strokeStyle;ctx.font=`${Math.max(12,scale*.55)}px monospace`;ctx.textAlign='center';ctx.fillText(draft.direction>0?'↑':'↓',x+scale/2,y+scale*.72);}else{const box=boxFor(draft);ctx.fillStyle=error?'#ed827540':'#8ed8bf40';ctx.strokeStyle=error?'#ed8275':'#8ed8bf';ctx.fillRect(box.x+1,box.y+1,box.width-2,box.height-2);ctx.strokeRect(box.x+1,box.y+1,box.width-2,box.height-2);}}
   }
-  const rotationAxis = createRotationControl($('editor-rotation'), rotate);
-  const networkPanel = createNetworkPanel($('editor-network'), { getState, onHighlight: ids => { highlightedPipes = ids; drawAll(); } });
-  createPipePalette($('editor-pipe-palette'), config => {
-    brush = { ...config, x: 0, y: 0, z: 0, rotation: 0 }; erase = false; selectedId = null; selectedPipeId = null; movingId = null; menuOpen = false; draft = null; pipeAnchor = null;
-    neighborDetails.open=true; refresh(); message('Начни у порта или на конце трубы и веди маршрут. Высота задаётся линиями срезов.');
-    (pointerView?.canvas || views[0].canvas).focus({ preventScroll: true });
+  function boxFor(item){const d=dimensions(item);return{x:view.ox+item.x*view.scale,y:view.oy+item.y*view.scale,width:d.width*view.scale,height:d.depth*view.scale};}
+  function close(){cancelGesture();screen.hidden=true;wagon.hidden=false;hud.hidden=false;document.body.dataset.screen='wagon';onClose();}
+  $('close-frame-editor').onclick=close;
+  window.addEventListener('keydown',event=>{
+    if(screen.hidden)return;
+    if(event.code==='Tab'&&!event.shiftKey&&!event.ctrlKey&&!event.metaKey){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)toggleMenu();return;}
+    if(event.code==='Escape'){event.preventDefault();event.stopImmediatePropagation();if(drag||stroke){cancelGesture();draw();}else if(!$('editor-menu').hidden||!$('shelf-settings').hidden)closePopovers();else if(brush||erase)clearTool();else if(selectedId||selectedPipeId){clearSelection();refresh();}else close();return;}
+    if(event.target instanceof HTMLInputElement||event.target instanceof HTMLSelectElement||event.target.isContentEditable||event.ctrlKey||event.metaKey||event.altKey)return;
+    const actions={Backspace:toggleErase,Delete:toggleErase,KeyR:rotate,KeyM:moveSelected,PageUp:()=>stepShelf(1),PageDown:()=>stepShelf(-1)};
+    if(actions[event.code]){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)actions[event.code]();}
   });
-  for (const [key, label, value, max] of [['width', 'Длина, м', 1.5, 12], ['depth', 'Ширина, м', 1, 3], ['height', 'Высота, м', 2, 2.5]]) {
-    const field = numberField(label, `edit-frame-${key}`, value, 0.25, max);
-    $('frame-size-fields').append(field.row); frameInputs[key] = field.input;
-    const brushField = numberField(label, `brush-${key}`, 0.5, 0.25, max);
-    $('brush-fields').append(brushField.row); brushInputs[key] = brushField.input;
-  }
-  for (const [key, label, min, max] of [['x', 'Вдоль, м', 0, 12], ['y', 'Поперёк, м', 0, 3], ['z', 'От дна, м', 0, 2.5], ['width', 'Длина, м', 0.25, 12], ['depth', 'Ширина, м', 0.25, 3], ['height', 'Высота, м', 0.25, 2.5]]) {
-    const field = numberField(label, `item-${key}`, 0.25, min, max);
-    $('item-fields').append(field.row); inputs[key] = field.input;
-  }
-  for (const plane of PLANES) {
-    const article = el('section', 'ortho-view'); article.dataset.plane = plane.key;
-    const name = el('span', 'view-name', plane.title); article.append(name);
-    const canvas = el('canvas'); canvas.id = `view-${plane.key}`; canvas.tabIndex = 0;
-    canvas.setAttribute('aria-label', `${plane.title}. Tab — блоки, Backspace — удаление. Линии срезов перетаскиваются за ручки.`);
-    article.append(canvas); $('editor-views').append(article);
-    const view = { ...plane, canvas, scale: 1, ox: 0, oy: 0, width: 0, height: 0 };
-    views.push(view);
-    canvas.addEventListener('pointerdown', event => beginPointer(event, view));
-    canvas.addEventListener('pointermove', event => movePointer(event, view));
-    canvas.addEventListener('pointerup', event => endPointer(event, view));
-    canvas.addEventListener('pointercancel', () => { cancelDrag(); drawAll(); });
-    canvas.addEventListener('lostpointercapture', () => { if (drag || stroke) { cancelDrag(); drawAll(); } });
-    canvas.addEventListener('pointerleave', () => { if (!drag && !stroke) { draft = null; hoverId = null; drawAll(); } });
-    canvas.addEventListener('contextmenu', event => { event.preventDefault(); clearTool(); });
-    new ResizeObserver(() => { if (!screen.hidden) drawAll(); }).observe(canvas);
-  }
-  function syncLayers(item) { if (item) for (const axis of ['x', 'y', 'z']) layers[axis] = item[axis]; }
-  function refresh(frameFields = false) {
-    const current = frame(); if (!current) return;
-    const size = localSize(current);
-    for (const [key, input] of Object.entries(brushInputs)) input.max = (key === 'height' ? size.height : Math.max(size.width, size.depth)) / 4;
-    if (frameFields) {
-      for (const key of ['width', 'depth', 'height']) frameInputs[key].value = size[key] / 4;
-      $('edit-frame-mount').value = current.mount;
-    }
-    $('frame-clearance').textContent = current.mount === 'ceiling'
-      ? `Низ ${meter(current.z)} м · ${current.z >= 8 ? 'проход свободен' : 'проход перекрыт'}` : `Напольный · высота ${meter(dimensions(current).height)} м`;
-    for (const axis of ['x', 'y', 'z']) layers[axis] = Math.max(0, Math.min(layers[axis], size[SIZE_KEY[axis]] - 1));
-    // Keep the top view under the larger elevation, aligned to its long dimension.
-    const wide = size.width >= size.depth, top = views.find(view => view.key === 'xy');
-    top.axes = wide ? ['x', 'y'] : ['y', 'x']; top.sizes = wide ? ['width', 'depth'] : ['depth', 'width'];
-    $('editor-views').dataset.topSide = wide ? 'left' : 'right';screen.dataset.menuSide=wide?'left':'right';
-    $('editor-views').style.gridTemplateColumns = `minmax(min(130px, 40vw), ${size.width}fr) minmax(min(130px, 40vw), ${size.depth}fr)`;
-    $('editor-views').style.gridTemplateRows = `minmax(min(150px, 30vh), ${size.height}fr) minmax(min(150px, 30vh), ${Math.min(size.width, size.depth)}fr)`;
-    const item = selected();
-    $('item-form').hidden = !item || !!brush || erase;
-    $('item-empty').hidden = !!item && !brush && !erase;
-    $('item-empty').textContent = erase ? 'Удаление: нажимай на блоки и трубы. Esc — убрать кисть.' : brush ? `${brush.type === 'pipe' ? 'Труба' : EQUIPMENT[brush.type].short} · ставь кликом или веди кисть. R — поворот. Высота задаётся линией среза на боковых видах.` : 'Tab — выбрать блок. Backspace — удалять по клику. Линии на видах задают срезы: перетаскивай их за ручки.';
-    if (item) {
-      $('item-title').textContent = EQUIPMENT[item.type].name;
-      for (const [key, input] of Object.entries(inputs)) input.value = item[key] / 4;
-      $('item-rotation').textContent = '';
-    }
-    $('editor-menu').hidden = !menuOpen;
-    $('editor-menu-button').setAttribute('aria-expanded', menuOpen);
-    $('editor-erase').classList.toggle('active', erase);
-    $('editor-erase').setAttribute('aria-pressed', erase);
-    simulationControls.refresh(); productionInspector.refresh(); refreshNearby(); portsEditor.refresh(); pipeInspector.refresh(); networkPanel.refresh();
-    drawAll();
-  }
-  function changed() { onChange(); refresh(); }
-  function toggleMenu() {
-    menuOpen = !menuOpen; refresh();
-    if (menuOpen) $('close-editor-menu').focus({ preventScroll: true });
-    else (pointerView?.canvas || $('editor-menu-button')).focus({ preventScroll: true });
-  }
-  function clearTool() {
-    cancelDrag(); brush = null; draft = null; erase = false; movingId = null; menuOpen = false; selectedPipeId = null; pipeAnchor = null; refresh(); message();
-  }
-  function toggleErase() {
-    cancelDrag(); erase = !erase; brush = null; draft = null; movingId = null; selectedId = null; selectedPipeId = null; menuOpen = false; pipeAnchor = null;
-    refresh(); message(erase ? 'Удаление · нажми на блок · Esc отменить' : 'Кисть удаления выключена');
-    (pointerView?.canvas || $('editor-menu-button')).focus({ preventScroll: true });
-  }
-  function choose(type) {
-    try {
-      const size = {};
-      for (const [key, input] of Object.entries(brushInputs)) size[key] = readVoxels(input);
-      brush = { type, x: 0, y: 0, z: 0, rotation: 0, ...size }; erase = false; selectedId = null; selectedPipeId = null; movingId = null; menuOpen = false;
-      draft = null; refresh(); message('Выбран блок. Нажимай на свободные места в любом виде.');
-      (pointerView?.canvas || views[0].canvas).focus({ preventScroll: true });
-    } catch (error) { message(error.message, true); }
-  }
-  function drawAll() {
-    if (screen.hidden || !frame()) return;
-    const bounds = localSize(frame());
-    const scale = Math.max(0.1, Math.min(...views.flatMap(view => {
-      const area = view.canvas.getBoundingClientRect();
-      return [(area.width - 44) / bounds[view.sizes[0]], (area.height - 44) / bounds[view.sizes[1]]];
-    })));
-    for (const view of views) drawView(view, scale);
-  }
-  function drawView(view, scale) {
-    const bounds = localSize(frame()), area = view.canvas.getBoundingClientRect();
-    const dpr = Math.min(devicePixelRatio || 1, 2), ctx = view.canvas.getContext('2d'), w = area.width, h = area.height;
-    view.canvas.width = Math.round(w * dpr); view.canvas.height = Math.round(h * dpr);
-    view.width = bounds[view.sizes[0]]; view.height = bounds[view.sizes[1]]; view.scale = scale;
-    view.ox = (w - view.width * scale) / 2; view.oy = (h - view.height * scale) / 2;
-    const right = view.ox + view.width * scale, bottom = view.oy + view.height * scale;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = '#111c23'; ctx.fillRect(0, 0, w, h);
-    if (view.key === 'xy') {
-      ctx.save(); ctx.beginPath(); ctx.rect(view.ox, view.oy, view.width * scale, view.height * scale); ctx.clip();
-      ctx.strokeStyle = '#d5535355'; ctx.lineWidth = 1;
-      for (let x = view.ox - h; x < right + h; x += 10) { ctx.beginPath(); ctx.moveTo(x, view.oy); ctx.lineTo(x + h, view.oy + h); ctx.stroke(); }
-      ctx.restore();
-    }
-    ctx.strokeStyle = '#34454d'; ctx.lineWidth = .5;
-    for (let x = 1; x < view.width; x++) { ctx.beginPath(); ctx.moveTo(view.ox + x * scale, view.oy); ctx.lineTo(view.ox + x * scale, bottom); ctx.stroke(); }
-    for (let y = 1; y < view.height; y++) { ctx.beginPath(); ctx.moveTo(view.ox, view.oy + y * scale); ctx.lineTo(right, view.oy + y * scale); ctx.stroke(); }
-    ctx.strokeStyle = '#b9a270'; ctx.lineWidth = 1; ctx.strokeRect(view.ox, view.oy, view.width * scale, view.height * scale);
-    if (view.flip) { ctx.strokeStyle = '#ec6262'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(view.ox, bottom); ctx.lineTo(right, bottom); ctx.stroke(); }
-    const objects = [...frame().children].sort((a, b) => Number(a.id === selectedId) - Number(b.id === selectedId));
-    for (const item of objects) drawItem(ctx, view, item, false);
-    for (const pipe of pipesInFrame(getState(), frame())) drawProjectedPipe(ctx, pipe, view, { alpha: inSlice(view, { ...pipe, type: 'pipe', rotation: 0 }) ? 1 : .18, highlight: highlightedPipes.has(pipe.id) || selectedPipeId === pipe.id, contents: pipeTokens(getState(),pipe.id) });
-    const localPorts = portsInFrame(getState(), frame()).filter(port => port.frameId === frameId);
-    for (const port of localPorts) {
-      ctx.save(); ctx.globalAlpha = port.cell[view.depth] === layers[view.depth] ? 1 : .18;
-      drawProjectedPort(ctx, port, view, getState().graph.ports.find(p => p.id === port.id)?.attached); ctx.restore();
-    }
-    if(neighborDetails.open || brush?.type==='pipe') for(const [index,port]of nearby.entries()){
-      const cell={...port.cell};
-      for(const [i,axis]of view.axes.entries())cell[axis]=Math.max(-.5-DIRECTIONS[port.face][{x:0,y:1,z:2}[axis]]/2,Math.min(cell[axis],(i===0?view.width:view.height)-.5-DIRECTIONS[port.face][{x:0,y:1,z:2}[axis]]/2));
-      ctx.save();ctx.globalAlpha=port.id===neighborSelect.value?1:.4;
-      drawProjectedPort(ctx,{...port,cell},view,port.attached);
-      const x=view.ox+(cell[view.axes[0]]+.5)*scale,y=view.oy+(view.flip?view.height-cell[view.axes[1]]-.5:cell[view.axes[1]]+.5)*scale;
-      ctx.fillStyle='#d7e1df';ctx.font='10px monospace';ctx.fillText(String(index+1),x+5,y-5);ctx.restore();
-    }
-    if (draft) drawItem(ctx, view, draft, true);
-    for (let index = 0; index < 2; index++) drawSlice(ctx, view, index);
-  }
-  function inSlice(view, item) {
-    return item[view.depth] <= layers[view.depth] && item[view.depth] + dimensions(item)[SIZE_KEY[view.depth]] > layers[view.depth];
-  }
-  function projected(view, item) {
-    const d = dimensions(item), width = d[view.sizes[0]], height = d[view.sizes[1]];
-    return { x: view.ox + item[view.axes[0]] * view.scale, y: view.oy + (view.flip ? view.height - item[view.axes[1]] - height : item[view.axes[1]]) * view.scale, width: width * view.scale, height: height * view.scale };
-  }
-  function drawItem(ctx, view, item, preview) {
-    if (item.type === 'pipe') {
-      const error = item.autoRoute ? paintPipeRoute(getState(), frameId, pipeAnchor, item, true) : pipePlacementError(getState(), item, frameId);
-      drawProjectedPipe(ctx, item, view, { preview: true, error: !!error }); return;
-    }
-    const box = projected(view, item), active = item.id === selectedId;
-    const error = preview && equipmentError(frame(), item, drag?.kind === 'item' ? selectedId : movingId);
-    const color = preview ? error ? '#edaa9e' : '#b5cd8b' : erase && hoverId === item.id ? '#ed6b5d' : EQUIPMENT[item.type].color;
-    ctx.globalAlpha = preview ? .8 : drag?.kind === 'item' && active ? .2 : inSlice(view, item) ? 1 : .18;
-    ctx.fillStyle = `${color}45`; ctx.strokeStyle = color; ctx.lineWidth = active ? 2 : 1;
-    ctx.fillRect(box.x + 1, box.y + 1, Math.max(0, box.width - 2), Math.max(0, box.height - 2));
-    ctx.strokeRect(box.x + 1, box.y + 1, Math.max(0, box.width - 2), Math.max(0, box.height - 2));
-    drawProductionGlyph(ctx,item.type,box,preview?null:ensureSimulation(getState()).containers[`${frameId}/${item.id}`]);ctx.globalAlpha = 1;
-  }
-  function slicePosition(view, index) {
-    const value = layers[view.axes[index]] + .5;
-    return index === 0 ? view.ox + value * view.scale : view.oy + (view.flip ? view.height - value : value) * view.scale;
-  }
-  function drawSlice(ctx, view, index) {
-    const position = slicePosition(view, index), color = index === 0 ? '#74afca' : '#d5a96d';
-    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1; ctx.setLineDash([4, 3]); ctx.beginPath();
-    if (index === 0) { ctx.moveTo(position, view.oy); ctx.lineTo(position, view.oy + view.height * view.scale); }
-    else { ctx.moveTo(view.ox, position); ctx.lineTo(view.ox + view.width * view.scale, position); }
-    ctx.stroke(); ctx.setLineDash([]);
-    const x = index === 0 ? position : view.ox - 9, y = index === 0 ? view.oy - 9 : position;
-    ctx.fillRect(x - 4, y - 4, 8, 8);
-  }
-  function point(event, view) {
-    const box = view.canvas.getBoundingClientRect();
-    const x = (event.clientX - box.left - view.ox) / view.scale, y = (event.clientY - box.top - view.oy) / view.scale;
-    return [x, view.flip ? view.height - y : y];
-  }
-  function itemAt(view, p) {
-    return [...frame().children].reverse().find(item => {
-      const d = dimensions(item);
-      return inSlice(view, item) && p[0] >= item[view.axes[0]] && p[0] < item[view.axes[0]] + d[view.sizes[0]] && p[1] >= item[view.axes[1]] && p[1] < item[view.axes[1]] + d[view.sizes[1]];
-    });
-  }
-  function pipeAt(view, p) {
-    return pipesInFrame(getState(), frame()).find(pipe => pipe[view.depth] === layers[view.depth] && Math.floor(p[0]) === pipe[view.axes[0]] && Math.floor(p[1]) === pipe[view.axes[1]]);
-  }
-  function sliceHit(event, view, allowBody) {
-    const rect = view.canvas.getBoundingClientRect(), x = event.clientX - rect.left, y = event.clientY - rect.top;
-    for (let index = 0; index < 2; index++) {
-      const position = slicePosition(view, index);
-      const hx = index === 0 ? position : view.ox - 9, hy = index === 0 ? view.oy - 9 : position;
-      if (Math.abs(x - hx) <= 9 && Math.abs(y - hy) <= 9) return index;
-      const body = index === 0 ? Math.abs(x - position) <= 4 && y >= view.oy && y <= view.oy + view.height * view.scale : Math.abs(y - position) <= 4 && x >= view.ox && x <= view.ox + view.width * view.scale;
-      if (allowBody && body) return index;
-    }
-    return -1;
-  }
-  function updateDraft(view, p) {
-    if (!brush) return;
-    draft = { ...brush }; const d = dimensions(draft);
-    draft[view.depth] = layers[view.depth];
-    for (let index = 0; index < 2; index++) draft[view.axes[index]] = Math.floor(p[index] - (draft.type === 'pipe' ? 0 : d[view.sizes[index]] / 2) + 1e-8);
-  }
-  function applyBrush(view, p, report = true) {
-    updateDraft(view, p);
-    const key = draft ? `${draft.x},${draft.y},${draft.z}` : `${view.key},${Math.floor(p[0])},${Math.floor(p[1])}`;
-    if (stroke?.cells.has(key)) return;
-    stroke?.cells.add(key);
-    if (erase) {
-      const pipe = pipeAt(view, p);
-      if (pipe) { const error=removePipe(getState(),pipe.id);if(error){message(error,true);return;} if (selectedPipeId === pipe.id) selectedPipeId = null; changed(); return; }
-      const item = itemAt(view, p);
-      if (item) { const error=removeEquipment(getState(),frameId,item.id);if(error){message(error,true);return;} if (selectedId === item.id) selectedId = null; changed(); }
-      return;
-    }
-    if (!draft) return;
-    if (draft.type === 'pipe') {
-      const error = draft.autoRoute ? paintPipeRoute(getState(), frameId, pipeAnchor, draft) : putPipe(getState(), draft, frameId);
-      if (error) { message(error, true); return; }
-      pipeAnchor = { x: draft.x, y: draft.y, z: draft.z }; changed(); message('Труба установлена. Связи обновлены.'); return;
-    }
-    const error = putEquipment(getState(), frameId, draft, movingId);
-    if (error) { if (report) message(error, true); return; }
-    if (movingId) { selectedId = movingId; brush = null; draft = null; movingId = null; stroke = null; }
-    changed(); message('Блок установлен · Tab — другой блок · Esc — убрать кисть');
-  }
-  function beginPointer(event, view) {
-    if (event.button !== 0 || drag || stroke) return;
-    event.preventDefault(); view.canvas.focus({ preventScroll: true });
-    pointerView = view; pointerPoint = point(event, view);
-    const hit = itemAt(view, pointerPoint), hitPipe = pipeAt(view, pointerPoint), slice = sliceHit(event, view, !brush && !erase && !hit && !hitPipe);
-    if (slice >= 0) {
-      drag = { kind: 'slice', view, index: slice, pointerId: event.pointerId }; draft = null;
-      view.canvas.setPointerCapture(event.pointerId); return;
-    }
-    if (brush || erase) {
-      pipeAnchor = null; stroke = { view, pointerId: event.pointerId, cells: new Set() }; view.canvas.setPointerCapture(event.pointerId); applyBrush(view, pointerPoint); drawAll(); return;
-    }
-    if (hitPipe) { selectedPipeId = hitPipe.id; selectedId = null; refresh(); message(); return; }
-    selectedPipeId = null;
-    if (!hit) { selectedId = null; refresh(); message(); return; }
-    selectedId = hit.id; syncLayers(hit); refresh();
-    drag = { kind: 'item', view, pointerId: event.pointerId, start: pointerPoint, original: { ...hit } }; draft = { ...hit };
-    view.canvas.setPointerCapture(event.pointerId);
-  }
-  function movePointer(event, view) {
-    pointerView = view; pointerPoint = point(event, view); hoverId = itemAt(view, pointerPoint)?.id || null;
-    if (drag?.view === view && drag.pointerId === event.pointerId) {
-      if (drag.kind === 'slice') {
-        const axis = view.axes[drag.index], max = localSize(frame())[SIZE_KEY[axis]] - 1;
-        layers[axis] = Math.max(0, Math.min(max, Math.floor(pointerPoint[drag.index])));
-        message(`Срез: ${meter(layers[axis])} м`); drawAll(); return;
-      }
-      draft = { ...drag.original };
-      for (let index = 0; index < 2; index++) draft[view.axes[index]] += Math.round(pointerPoint[index] - drag.start[index]);
-      const error = equipmentError(frame(), draft, selectedId); message(error || 'Отпусти указатель, чтобы переместить', !!error); drawAll(); return;
-    }
-    if (stroke?.view === view && (event.buttons & 1)) applyBrush(view, pointerPoint, false);
-    else updateDraft(view, pointerPoint);
-    view.canvas.style.cursor = sliceHit(event, view, !brush && !erase && !hoverId) >= 0 ? 'grab' : brush || erase ? 'crosshair' : hoverId ? 'move' : 'default';
-    drawAll();
-  }
-  function endPointer(event, view) {
-    if (drag?.view === view && drag.pointerId === event.pointerId) {
-      movePointer(event, view);
-      if (drag.kind === 'item') {
-        const error = putEquipment(getState(), frameId, draft, selectedId);
-        if (!error) { syncLayers(selected()); onChange(); }
-        message(error || 'Объект перемещён', !!error);
-      }
-      drag = null; draft = null; refresh();
-    }
-    stroke = null; pipeAnchor = null;
-    if (view.canvas.hasPointerCapture(event.pointerId)) view.canvas.releasePointerCapture(event.pointerId);
-  }
-  function rotate() {
-    const axis=rotationAxis();
-    if (brush?.type === 'pipe') { brush.faces = brush.faces.map(face => rotateFace(face,rotateObject({rotation:0},axis))); if (pointerView && pointerPoint) updateDraft(pointerView, pointerPoint); refresh(); return; }
-    if (brush) { brush = rotateObject(brush,axis); if (pointerView && pointerPoint) updateDraft(pointerView, pointerPoint); refresh(); return; }
-    if(selectedPipeId){
-      const found=findPipe(getState(),selectedPipeId),owner=found?.frameId?getState().objects.find(o=>o.id===found.frameId):null;
-      const faces=found.pipe.faces.map(face=>localFace(owner,rotateFace(rotateFace(localFace(frame(),rotateFace(face,owner)),rotateObject({rotation:0},axis)),frame())));
-      const error=updatePipeFaces(getState(),selectedPipeId,faces);if(!error)changed();message(error||'Труба повёрнута',!!error);return;
-    }
-    const item = selected(); if (!item) return;
-    const error = putEquipment(getState(), frameId, rotateObject(item,axis), selectedId);
-    if (!error) changed(); message(error || 'Поворот применён', !!error);
-  }
-  function moveSelected() {
-    if (!selected()) return;
-    brush = { ...selected() }; movingId = selectedId; erase = false; draft = null; refresh();
-  }
-  for (const button of document.querySelectorAll('[data-equipment-type]')) button.onclick = () => choose(button.dataset.equipmentType);
-  $('editor-menu-button').onclick = toggleMenu; $('close-editor-menu').onclick = toggleMenu;
-  $('editor-erase').onclick = toggleErase; $('item-delete').onclick = toggleErase;
-  $('item-rotate').onclick = rotate; $('item-move').onclick = moveSelected;
-  $('item-form').onsubmit = event => {
-    event.preventDefault(); const item = selected(); if (!item) return;
-    try {
-      const candidate = { ...item }; for (const [key, input] of Object.entries(inputs)) candidate[key] = readVoxels(input);
-      const error = putEquipment(getState(), frameId, candidate, selectedId);
-      if (error) { message(error, true); return; }
-      syncLayers(selected()); changed(); message('Свойства применены');
-    } catch (error) { message(error.message, true); }
-  };
-  $('frame-form').onsubmit = event => {
-    event.preventDefault();
-    try {
-      const settings = { mount: $('edit-frame-mount').value };
-      for (const [key, input] of Object.entries(frameInputs)) settings[key] = readVoxels(input);
-      const error = updateFrame(getState(), frameId, settings);
-      if (!error) { onChange(); refresh(true); }
-      message(error || 'Каркас обновлён', !!error);
-    } catch (error) { message(error.message, true); }
-  };
-  function cancelDrag() {
-    const previous = drag || stroke; draft = null; drag = null; stroke = null; pipeAnchor = null;
-    if (previous?.view.canvas.hasPointerCapture(previous.pointerId)) previous.view.canvas.releasePointerCapture(previous.pointerId);
-  }
-  const close = () => {
-    cancelDrag(); screen.hidden = true; wagon.hidden = false; hud.hidden = false;
-    document.body.dataset.screen = 'wagon'; onClose();
-  };
-  $('close-frame-editor').onclick = close;
-  window.addEventListener('keydown', event => {
-    if (screen.hidden) return;
-    if (event.code === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey) { event.preventDefault(); event.stopImmediatePropagation(); if (!event.repeat) toggleMenu(); return; }
-    if (event.key === 'Escape') {
-      event.preventDefault(); event.stopImmediatePropagation();
-      if (drag || stroke) { cancelDrag(); drawAll(); }
-      else if (menuOpen) toggleMenu();
-      else if (brush || erase) clearTool();
-      else close();
-      return;
-    }
-    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.target.isContentEditable || event.ctrlKey || event.metaKey || event.altKey) return;
-    const actions = { Backspace: toggleErase, Delete: toggleErase, KeyR: rotate, KeyM: moveSelected };
-    if (actions[event.code]) { event.preventDefault(); event.stopImmediatePropagation(); if (!event.repeat) actions[event.code](); }
-  });
-  return {
-    tick(){if(!screen.hidden){productionInspector.refresh();simulationControls.refresh();drawAll();}},
-    get isOpen() { return !screen.hidden; },
-    open(id) {
-      if (!getState().objects.some(item => item.id === id && item.type === 'frame')) return;
-      frameId = id; selectedId = null; selectedPipeId = null; pipeAnchor = null; brush = null; erase = false; movingId = null; menuOpen = false; draft = null; drag = null; stroke = null; pointerView = null; pointerPoint = null;
-      neighborDetails.open=false; ownSelect.replaceChildren(); neighborSelect.replaceChildren();
-      layers.x = layers.y = layers.z = 0;
-      const size = localSize(frame());
-      for (const [key, input] of Object.entries(brushInputs)) { input.max = size[key] / 4; input.value = Math.min(2, size[key]) / 4; }
-      wagon.hidden = true; hud.hidden = true; screen.hidden = false; document.body.dataset.screen = 'editor';
-      refresh(true); message(); $('close-frame-editor').focus({ preventScroll: true });
-    }, close
+  new ResizeObserver(draw).observe(canvas);
+  new ResizeObserver(()=>{screen.style.setProperty('--shelf-popover-top',`${document.querySelector('.shelf-toolbar').getBoundingClientRect().height+8}px`);draw();}).observe(document.querySelector('.shelf-toolbar'));
+  return{
+    tick(){if(!screen.hidden){productionInspector.refresh();simulationControls.refresh();draw();}},
+    get isOpen(){return !screen.hidden;},
+    open(id){if(!getState().objects.some(o=>o.id===id&&o.type==='frame'))return;frameId=id;shelfId=shelvesOf(frame())[0].id;clearSelection();brush=draft=drag=stroke=null;erase=false;movingId=null;pipeAnchor=null;continueAnchor=false;connectionStart=null;zoom=1;pan={x:0,y:0};closePopovers();neighbors.open=false;
+      for(const [key,input]of Object.entries(brushInputs))input.value=Math.min(2,key==='height'?shelf().height:localSize(frame())[key])/4;
+      wagon.hidden=true;hud.hidden=true;screen.hidden=false;document.body.dataset.screen='editor';refresh();message();$('close-frame-editor').focus();
+    },close
   };
 }

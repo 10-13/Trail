@@ -1,7 +1,8 @@
+import { makeShelves, shelvesOf, shelvesError, shelfPlacementError } from './shelves.js';
 import { ensureSimulation, canonicalSimulation, simulationError, deletionError, pipeTokens } from './simulation.js';
 import { WAGON, PLAYER, TYPES, EQUIPMENT, localSize, dimensions, intersects, validOrientation, transformBox } from './geometry.js';
 export { WAGON, PLAYER, TYPES, EQUIPMENT, localSize, dimensions, intersects } from './geometry.js';
-import { portsError, canonicalPorts, networkError, rebuildGraph, canonicalPipe, pipeScope, pipeShapeError, allPipes, pipeHitsPlayer, cellKey, sameCell, routeCells, autoPortFaces, DIRECTIONS, OPPOSITE, worldPipe, rotateFace, localFace, adjacent, worldPorts } from './logistics.js';
+import { portsError, canonicalPorts, networkError, rebuildGraph, canonicalPipe, pipeScope, pipeShapeError, allPipes, pipeHitsPlayer, cellKey, sameCell, routeCells, autoPortFaces, DIRECTIONS, OPPOSITE, worldPipe, rotateFace, localFace, adjacent, worldPorts, pipesInFrame } from './logistics.js';
 export { rebuildGraph } from './logistics.js';
 function boxError(object, definitions) {
   if (!object || !Object.hasOwn(definitions, object.type)) return 'Неизвестный тип объекта';
@@ -24,6 +25,7 @@ export function equipmentError(frame, item, ignoreId = null) {
   if (error) return error;
   const size = dimensions(item), bounds = localSize(frame);
   if (item.x < 0 || item.y < 0 || item.z < 0 || item.x + size.width > bounds.width || item.y + size.depth > bounds.depth || item.z + size.height > bounds.height) return 'Оборудование выходит за границы каркаса';
+  const shelfError=shelfPlacementError(frame,item);if(shelfError)return shelfError;
   if ((frame.children || []).some(other => other.id !== ignoreId && intersects(item, other))) return 'Оборудование пересекается с другим объектом';
   return '';
 }
@@ -48,6 +50,7 @@ export function placementError(state, object, ignoreId = null, checkPlayer = tru
     if (!['floor', 'ceiling'].includes(mount)) return 'Неизвестное крепление каркаса';
     if (mount === 'floor' && object.z !== 0) return 'Напольный каркас должен крепиться к полу';
     if (mount === 'ceiling' && object.z + size.height !== WAGON.height) return 'Потолочный каркас должен крепиться к потолку';
+    const shelfError=shelvesError(object);if(shelfError)return shelfError;
     const contents = contentsError(object);
     if (contents) return contents;
   } else {
@@ -65,16 +68,17 @@ export function placementError(state, object, ignoreId = null, checkPlayer = tru
 }
 function canonicalObject(object) {
   const result = { id: object.id, type: object.type, x: object.x, y: object.y, z: object.z, rotation: object.rotation };
+  if(object.shelfId!==undefined)result.shelfId=object.shelfId;
   if (object.orientation) result.orientation = [...object.orientation];
   if (object.type === 'frame' || Object.hasOwn(EQUIPMENT, object.type)) Object.assign(result, localSize(object));
-  if (object.type === 'frame') Object.assign(result, { mount: object.mount || 'floor', nextItemId: object.nextItemId ?? 1, children: (object.children || []).map(canonicalObject), pipes: (object.pipes || []).map(canonicalPipe) });
+  if (object.type === 'frame') Object.assign(result, { shelves:shelvesOf(object).map(s=>({id:s.id,z:s.z,height:s.height})), mount: object.mount || 'floor', nextItemId: object.nextItemId ?? 1, children: (object.children || []).map(canonicalObject), pipes: (object.pipes || []).map(canonicalPipe) });
   else Object.assign(result, { ports: canonicalPorts(object), nextPortId: object.nextPortId ?? (['filter','centrifuge'].includes(object.type)?4:3) });
   return result;
 }
 export function createState(demo = true) {
-  const state = { version: 4, nextId: 5, nextPipeId: 1, pipes: [], player: { x: 3, y: 6, angle: 0 }, objects: demo ? [
-    { id: 'object-1', type: 'frame', x: 7, y: 1, z: 0, rotation: 0 },
-    { id: 'object-2', type: 'frame', x: 19, y: 1, z: 0, rotation: 0 },
+  const state = { version: 5, nextId: 5, nextPipeId: 1, pipes: [], player: { x: 3, y: 6, angle: 0 }, objects: demo ? [
+    { id: 'object-1', type: 'frame', x: 7, y: 1, z: 0, rotation: 0, shelves:makeShelves([4,4]) },
+    { id: 'object-2', type: 'frame', x: 19, y: 1, z: 0, rotation: 0, shelves:makeShelves([4,4]) },
     { id: 'object-3', type: 'workbench', x: 31, y: 8, z: 0, rotation: 0 },
     { id: 'object-4', type: 'storage', x: 40, y: 1, z: 0, rotation: 0 }
   ].map(canonicalObject) : [] };
@@ -94,8 +98,41 @@ export function updateFrame(state, id, settings) {
   const frame = state.objects.find(item => item.id === id && item.type === 'frame');
   if (!frame) return 'Каркас не найден';
   const object = { ...frame, ...settings };
+  if(settings.height!==undefined&&settings.shelves===undefined){object.shelves=shelvesOf(frame).map(s=>({...s}));object.shelves.at(-1).height+=settings.height-localSize(frame).height;}
   object.z = object.mount === 'ceiling' ? WAGON.height - dimensions(object).height : 0;
   return putObject(state, object, id);
+}
+export function setFrameShelves(state,id,heights,settings={}) {
+  const frame=state.objects.find(o=>o.id===id&&o.type==='frame');if(!frame)return 'Стеллаж не найден';
+  if(!Array.isArray(heights)||!heights.length||heights.length>10||heights.some(h=>!Number.isInteger(h)||h<1))return 'Высота каждой полки должна быть кратна 0,25 м';
+  const shelves=makeShelves(heights),children=[];
+  for(const item of frame.children){
+    if(item.shelfId){const shelf=shelves.find(s=>s.id===item.shelfId);if(!shelf)return 'Сначала перенеси блоки с удаляемой полки';children.push({...item,z:shelf.z});}
+    else children.push({...item});
+  }
+  return updateFrame(state,id,{...settings,height:heights.reduce((a,b)=>a+b,0),shelves,children});
+}
+export function connectShelfLevels(state,frameId,shelfId,x,y,direction,preview=false) {
+  const frame=state.objects.find(o=>o.id===frameId&&o.type==='frame');if(!frame)return 'Стеллаж не найден';
+  if(![-1,1].includes(direction))return 'Выбери соседнюю полку';
+  const shelves=shelvesOf(frame),index=shelves.findIndex(s=>s.id===shelfId),from=shelves[index],to=shelves[index+direction];
+  if(!from||!to)return 'В этом направлении нет полки';
+  return paintPipeRoute(state,frameId,{x,y,z:from.z},{x,y,z:to.z},preview);
+}
+export function pipeColumnIds(state,id,frameId=null) {
+  const frame=frameId?state.objects.find(o=>o.id===frameId):null;
+  const all=frame?pipesInFrame(state,frame):allPipes(state),start=all.find(p=>p.id===id);if(!start)return [];
+  const cells=new Map(all.map(p=>[cellKey(p),p])),ids=new Set([id]),queue=[start];
+  for(let i=0;i<queue.length;i++)for(const face of ['nz','pz'])if(queue[i].faces.includes(face)){
+    const next=cells.get(cellKey(adjacent(queue[i],face)));if(next?.faces.includes(OPPOSITE[face])&&!ids.has(next.id)){ids.add(next.id);queue.push(next);}
+  }
+  return [...ids];
+}
+export function removePipeColumn(state,id,frameId=null) {
+  const ids=new Set(pipeColumnIds(state,id,frameId));
+  if([...ids].some(id=>pipeTokens(state,id).length))return 'Сначала забери ресурсы из перехода между полками';
+  state.pipes=state.pipes.filter(p=>!ids.has(p.id));for(const frame of state.objects.filter(o=>o.type==='frame'))frame.pipes=frame.pipes.filter(p=>!ids.has(p.id));
+  rebuildGraph(state);return '';
 }
 export function putEquipment(state, frameId, candidate, movingId = null) {
   const frame = state.objects.find(item => item.id === frameId && item.type === 'frame');
@@ -264,13 +301,13 @@ export function movePlayer(state, dx, dy, seconds) {
   }
 }
 export function serialize(state) {
-  return JSON.stringify({ version: 4, wagon: WAGON, nextId: state.nextId, nextPipeId: state.nextPipeId, simulation: canonicalSimulation(state), pipes: state.pipes.map(canonicalPipe), player: state.player, objects: state.objects.map(canonicalObject) }, null, 2);
+  return JSON.stringify({ version: 5, wagon: WAGON, nextId: state.nextId, nextPipeId: state.nextPipeId, simulation: canonicalSimulation(state), pipes: state.pipes.map(canonicalPipe), player: state.player, objects: state.objects.map(canonicalObject) }, null, 2);
 }
 export function deserialize(text) {
   if (text.length > 1_000_000) throw new Error('Файл слишком большой');
   let data;
   try { data = JSON.parse(text); } catch { throw new Error('Файл не содержит корректный JSON'); }
-  if (!data || ![1, 2, 3, 4].includes(data.version)) throw new Error('Неподдерживаемая версия сохранения');
+  if (!data || ![1, 2, 3, 4, 5].includes(data.version)) throw new Error('Неподдерживаемая версия сохранения');
   if (!data.wagon || Object.keys(WAGON).some(key => data.wagon[key] !== WAGON[key])) throw new Error('Сохранение предназначено для другого вагона');
   if (!Array.isArray(data.objects) || data.objects.length > 5760) throw new Error('Некорректный список объектов');
   if (!Number.isSafeInteger(data.nextId) || data.nextId < 1) throw new Error('Некорректный счётчик объектов');
@@ -300,6 +337,6 @@ export function deserialize(text) {
   result.player = { x: data.player.x, y: data.player.y, angle: data.player.angle };
   result.nextId = data.nextId;
   rebuildGraph(result);
-  if(data.version===4){const error=simulationError(result,data.simulation);if(error)throw new Error(error);result.simulation=structuredClone(data.simulation);}
+  if(data.version>=4){const error=simulationError(result,data.simulation);if(error)throw new Error(error);result.simulation=structuredClone(data.simulation);}
   ensureSimulation(result);return result;
 }

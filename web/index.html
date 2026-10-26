@@ -33,7 +33,7 @@
     <aside id="build-menu" class="build-menu panel" aria-labelledby="build-title" hidden>
       <div class="menu-heading"><div><div class="section-label">МАСТЕРСКАЯ</div><h1 id="build-title">Строительство</h1></div><button id="close-build-menu" class="icon-button" aria-label="Закрыть меню строительства">×</button></div>
       <p class="menu-help">Выбери объект, затем укажи место в вагоне.</p>
-      <details id="frame-options" open><summary>Параметры нового каркаса</summary><div id="frame-config"></div><label class="field"><span class="field-label">Крепление</span><select id="frame-mount"><option value="floor">К полу</option><option value="ceiling">К потолку</option></select></label><p id="new-frame-clearance" class="muted"></p></details>
+      <details id="frame-options" open><summary>Параметры нового стеллажа</summary><div id="frame-config"></div><label class="field"><span class="field-label">Крепление</span><select id="frame-mount"><option value="floor">К полу</option><option value="ceiling">К потолку</option></select></label><p id="new-frame-clearance" class="muted"></p></details>
       <div id="catalog" class="catalog"></div>
       <div id="world-pipe-palette"></div>
       <div class="file-tools"><button id="export" class="text-button">Экспорт JSON ↗</button><button id="import" class="text-button">Импорт JSON ↙</button></div>
@@ -43,7 +43,7 @@
 
     <section id="inspector" class="inspector panel" aria-label="Выбранный объект" hidden>
       <div class="selection-summary"><div class="inspector-icon" id="selection-icon">↟</div><div class="selection-description"><div class="section-label" id="selection-label">ОБЪЕКТ</div><h2 id="selection-title"></h2><p id="selection-detail"></p></div></div>
-      <div id="object-actions" class="object-actions" hidden><button id="edit-frame" hidden>Открыть каркас <kbd>E</kbd></button><button id="move-object">↔ Переместить <kbd>M</kbd></button><button id="rotate-object" hidden>↻ Повернуть <kbd>R</kbd></button><button id="delete-object" class="danger">Удалять <kbd>⌫</kbd></button></div>
+      <div id="object-actions" class="object-actions" hidden><button id="edit-frame" hidden>Открыть стеллаж <kbd>E</kbd></button><button id="move-object">↔ Переместить <kbd>M</kbd></button><button id="rotate-object" hidden>↻ Повернуть <kbd>R</kbd></button><button id="delete-object" class="danger">Удалять <kbd>⌫</kbd></button></div>
       <div id="build-actions" class="object-actions" hidden><button id="rotate-ghost" hidden>↻ Повернуть <kbd>R</kbd></button><button id="cancel-build">Отменить <kbd>Esc</kbd></button></div>
       <div id="world-rotation"></div><div id="world-production"></div><div id="world-ports"></div><div id="world-pipe-inspector"></div>
     </section>
@@ -62,25 +62,29 @@
       <button data-direction="up" aria-label="Вверх">↑</button><button data-direction="left" aria-label="Влево">←</button><button data-direction="down" aria-label="Вниз">↓</button><button data-direction="right" aria-label="Вправо">→</button>
     </div>
   </div>
-  <main id="frame-editor" aria-label="Редактор каркаса" hidden>
-    <div class="editor-workspace">
-      <div id="editor-views" class="editor-views">
-        <section class="editor-properties" aria-label="Свойства выбранного блока">
-    <div class="editor-tools panel" aria-label="Инструменты редактора"><button id="close-frame-editor">← В вагон</button><button id="editor-menu-button" aria-expanded="false" aria-controls="editor-menu">Блоки <kbd>Tab</kbd></button><button id="editor-erase" aria-pressed="false">Удаление <kbd>⌫</kbd></button><button id="save-editor" class="save-button">Сохранить</button></div>
-
-          <div id="editor-simulation"></div><div id="editor-rotation"></div><div id="neighbor-connections"></div><p id="item-empty" class="muted">Tab — выбрать блок. Backspace — удалять по клику. Линии на видах задают срезы: перетаскивай их за ручки.</p>
-          <form id="item-form" hidden><h3 id="item-title"></h3><div id="item-fields"></div><div class="tool-row"><button type="submit">Применить</button><button id="item-rotate" hidden type="button">Повернуть <span id="item-rotation"></span></button><button id="item-move" type="button">Перенести</button><button id="item-delete" type="button" class="danger">Кисть удаления</button></div></form>
-          <div id="item-production"></div><div id="item-ports"></div><div id="editor-pipe-inspector"></div><div id="editor-network"></div>
-        </section>
-      </div>
-    </div>
-    <aside id="editor-menu" class="build-menu panel" aria-label="Выбор блока" hidden>
-      <div class="menu-heading"><h2>Добавить блок</h2><button id="close-editor-menu" class="icon-button" aria-label="Закрыть меню блоков">×</button></div>
-      <div id="brush-fields"></div><div class="catalog"><button data-equipment-type="machine">Модуль</button><button data-equipment-type="tank">Бак</button><button data-equipment-type="filter">Фильтр</button><button data-equipment-type="centrifuge">Центрифуга</button></div>
-      <div id="editor-pipe-palette"></div>
-      <details id="editor-frame-options"><summary>Размеры каркаса</summary><form id="frame-form"><div id="frame-size-fields"></div><label class="field"><span class="field-label">Крепление</span><select id="edit-frame-mount"><option value="floor">К полу</option><option value="ceiling">К потолку</option></select></label><button type="submit">Применить к каркасу</button><p id="frame-clearance" class="muted"></p></form></details>
+  <main id="frame-editor" aria-label="Редактор полок" hidden>
+    <header class="shelf-toolbar">
+      <div class="shelf-header-row"><button id="close-frame-editor">← В вагон</button><strong id="rack-title">Стеллаж</strong><button id="shelf-settings-button" aria-expanded="false">Полки</button><button id="save-editor" class="save-button">Сохранить</button></div>
+      <div class="shelf-header-row shelf-tools"><label class="shelf-picker">Полка <select id="shelf-select" aria-label="Текущая полка"></select></label><button id="editor-menu-button" aria-expanded="false" aria-controls="editor-menu">Блоки <kbd>Tab</kbd></button><button id="editor-erase" aria-pressed="false">Удаление <kbd>⌫</kbd></button><button id="editor-rotate">↻ <kbd>R</kbd></button><button id="shelf-riser-up" title="Проложить трубу на полку выше">Труба ↑</button><button id="shelf-riser-down" title="Проложить трубу на полку ниже">Труба ↓</button><span id="shelf-usage" class="muted"></span></div>
+      <div id="editor-simulation"></div>
+    </header>
+    <section id="shelf-scene" aria-label="План выбранной полки"><canvas id="shelf-canvas" tabindex="0" aria-label="Полка сверху. Tab — блоки. Backspace — удаление. PageUp и PageDown — полки."></canvas><div class="shelf-zoom"><button id="shelf-zoom-out" aria-label="Отдалить">−</button><button id="shelf-fit">Вписать</button><button id="shelf-zoom-in" aria-label="Приблизить">+</button></div></section>
+    <aside id="shelf-inspector" class="panel" aria-label="Выбранный блок" hidden>
+      <div class="menu-heading"><h2>Свойства</h2><button id="close-shelf-inspector" aria-label="Снять выбор">×</button></div>
+      <form id="item-form" hidden><h3 id="item-title"></h3><label class="field"><span class="field-label">Полка</span><select id="item-shelf-select" aria-label="Полка блока"></select></label><div id="item-fields"></div><div class="tool-row"><button type="submit">Применить</button><button id="item-move" type="button">Перенести</button><button id="item-delete" type="button" class="danger">Удалять</button></div></form>
+      <div id="item-production"></div><div id="item-ports"></div><div id="editor-pipe-inspector"></div><button id="collect-column" hidden>Забрать содержимое перехода</button>
     </aside>
-    <div id="editor-message" role="status"></div>
+    <aside id="editor-menu" class="build-menu panel shelf-popover" aria-label="Выбор блока" hidden>
+      <div class="menu-heading"><h2>Добавить на полку</h2><button id="close-editor-menu" aria-label="Закрыть меню блоков">×</button></div>
+      <div class="catalog"><button data-equipment-type="machine">Модуль</button><button data-equipment-type="tank">Бак</button><button data-equipment-type="filter">Фильтр</button><button data-equipment-type="centrifuge">Центрифуга</button></div>
+      <details><summary>Размер нового блока</summary><div id="brush-fields"></div></details>
+      <div id="editor-pipe-palette"></div><button id="connect-ports-tool">Соединить два порта</button>
+      <details><summary>Поворот по оси</summary><div id="editor-rotation"></div></details><div id="neighbor-connections"></div><div id="editor-network"></div>
+    </aside>
+    <aside id="shelf-settings" class="panel shelf-popover" aria-label="Разметка стеллажа" hidden><div class="menu-heading"><h2>Полки стеллажа</h2><button id="close-shelf-settings" aria-label="Закрыть разметку">×</button></div>
+      <form id="frame-form"><div id="frame-size-fields"></div><label class="field"><span class="field-label">Крепление</span><select id="edit-frame-mount"><option value="floor">К полу</option><option value="ceiling">К потолку</option></select></label><div id="shelf-height-fields"></div><div class="tool-row"><button id="add-shelf" type="button">＋ Полка</button><button id="remove-shelf" type="button">− Верхняя</button></div><p id="shelf-height-total" class="muted"></p><button type="submit">Применить разметку</button><p class="muted">Высоты — свободное место для блоков. Шаг 0,25 м. Трубы сохраняют высоту при изменении разметки.</p></form>
+    </aside>
+    <div id="editor-message" role="status">Tab — блоки · ⌫ — удаление · PageUp / PageDown — полки</div>
   </main>
   <div id="toast" class="toast" role="status" hidden></div>
   <script type="module" src="game.js"></script>

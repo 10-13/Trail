@@ -49,13 +49,13 @@ test('filled structures and pipes refuse deletion; explicit collection preserves
   assert.equal(collectResources(s,id),'');assert.equal(removePipe(s,id),'');conservation(s);
   assert.equal(collectResources(s,owner(s,0)),'');const saved=owner(s,0);assert.equal(removeEquipment(s,s.objects[0].id,s.objects[0].children[0].id),'');assert.ok(!ensureSimulation(s).containers[saved]);conservation(s);
 });
-test('partial recipe progress, pipe destinations and pause state survive v4 round trip exactly',()=>{
+test('partial recipe progress, pipe destinations and pause state survive v5 round trip exactly',()=>{
   const s=createProductionDemo();ticks(s,15);assert.ok(Object.values(s.simulation.containers).some(c=>c.progress>0));
   s.simulation.running=true;const text=serialize(s),loaded=deserialize(text);assert.equal(serialize(loaded),text);
   ticks(s,100);ticks(loaded,100);assert.equal(serialize(loaded),serialize(s));conservation(loaded);
 });
 test('legacy v1-v3 migration adds empty buffers and a finite prototype inventory',()=>{
-  const current=JSON.parse(serialize(createState()));for(const version of [1,2,3]){const old={...current,version};delete old.simulation;const state=deserialize(JSON.stringify(old));assert.equal(state.version,4);assert.deepEqual(state.simulation.inventory,{crude:64});assert.equal(state.simulation.running,false);}
+  const current=JSON.parse(serialize(createState()));for(const version of [1,2,3]){const old={...current,version};delete old.simulation;const state=deserialize(JSON.stringify(old));assert.equal(state.version,5);assert.deepEqual(state.simulation.inventory,{crude:64});assert.equal(state.simulation.running,false);}
 });
 test('corrupt stocks, overflowing pipes, invalid recipes and resource filters reject atomically',()=>{
   const s=createProductionDemo();ticks(s,15);const text=serialize(s);

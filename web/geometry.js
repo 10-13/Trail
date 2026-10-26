@@ -2,7 +2,7 @@
 export const WAGON = Object.freeze({ width: 48, depth: 12, height: 10, voxel: 0.25 });
 export const PLAYER = Object.freeze({ radius: 1, height: 8, speed: 7 });
 export const TYPES = Object.freeze({
-  frame: Object.freeze({ name: 'Каркас', short: 'Каркас', width: 6, depth: 4, height: 8, color: '#e8b76b', icon: '⊞', category: 'Каркас' }),
+  frame: Object.freeze({ name: 'Стеллаж', short: 'Стеллаж', width: 6, depth: 4, height: 8, color: '#e8b76b', icon: '⊞', category: 'Стеллаж' }),
   storage: Object.freeze({ name: 'Ящик для деталей', short: 'Ящик', width: 3, depth: 3, height: 3, color: '#9caf8b', icon: '▧', category: 'Свободное сооружение' }),
   workbench: Object.freeze({ name: 'Верстак', short: 'Верстак', width: 4, depth: 3, height: 4, color: '#8db6bc', icon: '⊟', category: 'Свободное сооружение' })
 });

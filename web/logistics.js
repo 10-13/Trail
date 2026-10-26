@@ -71,7 +71,7 @@ export function worldPorts(state) {
       let cell = portCell(object, port), face = rotateFace(port.face, object);
       if (frame) { cell = rotateCell(cell, localSize(frame), frame); cell = { x: cell.x + frame.x, y: cell.y + frame.y, z: cell.z + frame.z }; face = rotateFace(face, frame); }
       const owner = frame ? `${frame.id}/${object.id}` : object.id;
-      result.push({ ...port, id: `${owner}/${port.id}`, portId: port.id, owner, objectId: object.id, frameId: frame?.id || null, cell, face, neighbor: adjacent(cell, face), label: frame ? `Каркас ${frame.id.slice(7)} / ${EQUIPMENT[object.type].short.toLowerCase()} ${object.id.slice(5)}` : `${object.type === 'storage' ? 'Ящик' : 'Верстак'} ${object.id.slice(7)}` });
+      result.push({ ...port, id: `${owner}/${port.id}`, portId: port.id, owner, objectId: object.id, frameId: frame?.id || null, cell, face, neighbor: adjacent(cell, face), label: frame ? `Стеллаж ${frame.id.slice(7)} / ${EQUIPMENT[object.type].short.toLowerCase()} ${object.id.slice(5)}` : `${object.type === 'storage' ? 'Ящик' : 'Верстак'} ${object.id.slice(7)}` });
     }
   }
   for (const object of state.objects) if (object.type === 'frame') { for (const item of object.children || []) add(item, object); } else add(object);
@@ -105,7 +105,7 @@ export function openPipeEnds(state) {
   return allPipes(state).flatMap(pipe => pipe.faces.filter(face => {
     const cell = adjacent(pipe, face), next = occupied.get(cellKey(cell));
     return !next?.faces.includes(OPPOSITE[face]) && !state.graph.ports.some(port => sameCell(port.cell, cell) && port.face === OPPOSITE[face]);
-  }).map(face => ({ id: `${pipe.id}/${face}`, pipeId: pipe.id, frameId: pipe.frameId, kind: 'pipe', label: pipe.frameId ? `Каркас ${pipe.frameId.slice(7)} · конец трубы` : 'Внешняя труба', cell: {x:pipe.x,y:pipe.y,z:pipe.z}, face, neighbor: adjacent(pipe, face) })));
+  }).map(face => ({ id: `${pipe.id}/${face}`, pipeId: pipe.id, frameId: pipe.frameId, kind: 'pipe', label: pipe.frameId ? `Стеллаж ${pipe.frameId.slice(7)} · конец трубы` : 'Внешняя труба', cell: {x:pipe.x,y:pipe.y,z:pipe.z}, face, neighbor: adjacent(pipe, face) })));
 }
 export function pipeScope(state, frameId) {
   return frameId ? state.objects.find(item => item.id === frameId && item.type === 'frame')?.pipes : state.pipes;

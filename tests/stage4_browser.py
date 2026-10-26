@@ -1,7 +1,7 @@
 """Production through native controls, v4 persistence and reversible demo."""
 import json
 from playwright.sync_api import sync_playwright, expect
-from browser_helpers import snapshot, click_projection, projection_point
+from browser_helpers import snapshot, click_shelf
 
 def run(page,phone=False):
     errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
@@ -25,31 +25,25 @@ def run(page,phone=False):
     # Advance with the same native single-step button used to inspect a line.
     for _ in range(75):step.click()
     assert sim()['containers'][owner(3)]['stored'].get('clean',0)>0
-    # Top view is wide; phone test uses XZ which has enough room to hit tiny blocks.
-    plane='xz' if phone else 'xy'
-    # Set the hidden coordinate to y=2 for the side elevation via a port selector.
-    nearby=page.locator('#neighbor-connections')
-    if phone:
-        nearby.locator('summary').click()
-        nearby.get_by_label('Подключение этого каркаса').select_option(f'{owner(0)}/port-2')
-    click_projection(page,plane,frame(),{'x':25.7,'y':2,'z':1})
+    click_shelf(page,frame(),25.7,2)
     inspector=page.locator('#item-production')
     expect(inspector.locator('.production-inspector')).to_be_visible()
     expect(inspector.locator('h3')).to_contain_text('Бак')
     expect(inspector.locator('.resource-stock')).to_contain_text('Чистая нефть')
     # Stock in a full pipe is protected from the eraser and can be explicitly recovered.
-    filled_id=next(id for id,tokens in sim()['pipes'].items()if tokens)
+    filled_id=next(id for id,tokens in sim()['pipes'].items()if tokens and next(p for p in state()['pipes']if p['id']==id)['z']<4)
     pipe=next(p for p in state()['pipes']if p['id']==filled_id)
     local={'x':pipe['x']-frame()['x']+.5,'y':pipe['y']-frame()['y']+.5,'z':pipe['z']+.5}
     if not phone:
-        page.keyboard.press('Backspace');click_projection(page,'xy',frame(),local)
+        page.keyboard.press('Backspace');click_shelf(page,frame(),local['x'],local['y'])
         expect(page.locator('#editor-message')).to_contain_text('забери')
         assert any(p['id']==filled_id for p in state()['pipes'])
-        page.keyboard.press('Escape');click_projection(page,'xy',frame(),local)
+        page.keyboard.press('Escape');click_shelf(page,frame(),local['x'],local['y'])
         inspector.locator('[data-resource-collect]').click()
         assert not sim()['pipes'].get(filled_id)
     # Collect output into inventory, leaving capacity for the line to resume.
-    click_projection(page,plane,frame(),{'x':25.7,'y':2,'z':1})
+    if not phone:
+        page.locator('#close-shelf-inspector').click();click_shelf(page,frame(),25.7,2)
     amount=sim()['containers'][owner(3)]['stored']['clean']
     inspector.locator('[data-resource-collect]').click()
     assert sim()['inventory']['clean']>=amount
@@ -65,7 +59,7 @@ def run(page,phone=False):
     inspector.locator('[data-apparatus-toggle]').click()
     for _ in range(8):step.click()
     assert sim()['containers'][owner(3)]['stored'].get('clean',0)>0
-    saved=state();assert saved['version']==4
+    saved=state();assert saved['version']==5
     page.reload();page.wait_for_selector('.catalog-card',state='attached');assert state()==saved
     if not phone:page.screenshot(path='/workspace/shared/trail-stage4-wagon.png')
     page.locator('#world-simulation [data-production-demo]').click()
@@ -73,7 +67,7 @@ def run(page,phone=False):
     # Re-enter demo for a useful final image without touching the restored save.
     page.locator('#world-simulation [data-production-demo]').click()
     for _ in range(45):page.locator('#editor-simulation [data-sim-step]').click()
-    click_projection(page,'xz' if phone else 'xy',frame(),{'x':9.7,'y':1.7,'z':.5})
+    click_shelf(page,frame(),9.7,1.7)
     if not phone:page.screenshot(path='/workspace/shared/trail-stage4-editor.png')
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
     assert not errors,errors
@@ -83,4 +77,4 @@ with sync_playwright() as p:
     run(browser.new_page(viewport={'width':1600,'height':1000}))
     run(browser.new_page(viewport={'width':390,'height':844},is_mobile=True,has_touch=True),True)
     browser.close()
-    print('PASS: native demo/start/pause/step; production/colored contents; filled pipe protection and recovery; output collection/resume; v4 reload; original layout restored; desktop/mobile without JS errors')
+    print('PASS: native demo/start/pause/step; production/colored contents; filled pipe protection and recovery; output collection/resume; v5 reload; original layout restored; desktop/mobile without JS errors')

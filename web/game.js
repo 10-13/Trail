@@ -1,3 +1,4 @@
+import { makeShelves, shelvesOf } from './shelves.js';
 import { createSimulationRunner } from './simulation-runner.js';
 import { ensureSimulation, simulationTick, pipeTokens } from './simulation.js';
 import { createSimulationControls, createProductionInspector, drawProductionGlyph } from './production-ui.js';
@@ -104,10 +105,10 @@ function updateUI() {
   $('build-actions').hidden = !ghost;
   $('selection-icon').textContent = definition?.icon || (selectedPipeId ? '━' : '↟');
   $('selection-icon').style.color = definition?.color || '#93d7cf';
-  $('selection-label').textContent = ghost ? movingId ? 'ПЕРЕМЕЩЕНИЕ · ЛКМ ДЛЯ УСТАНОВКИ' : 'СТРОИТЕЛЬСТВО · ЛКМ ДЛЯ УСТАНОВКИ' : object ? object.type === 'frame' ? object.mount === 'ceiling' ? 'ПОТОЛОЧНЫЙ КАРКАС' : 'НАПОЛЬНЫЙ КАРКАС' : definition.category.toUpperCase() : '';
+  $('selection-label').textContent = ghost ? movingId ? 'ПЕРЕМЕЩЕНИЕ · ЛКМ ДЛЯ УСТАНОВКИ' : 'СТРОИТЕЛЬСТВО · ЛКМ ДЛЯ УСТАНОВКИ' : object ? object.type === 'frame' ? object.mount === 'ceiling' ? 'ПОТОЛОЧНЫЙ СТЕЛЛАЖ' : 'НАПОЛЬНЫЙ СТЕЛЛАЖ' : definition.category.toUpperCase() : '';
   $('selection-title').textContent = definition?.name || (selectedPipeId ? 'Труба' : 'Осмотрись внутри');
   $('selection-detail').textContent = object ? `${objectSize(object)} · ${ghost ? 'выбери свободное место на сетке' : `вдоль ${meters(object.x)} м · поперёк ${meters(object.y)} м`}` : 'Передвигайся по вагону и выбирай место для строительства.';
-  if (object?.type === 'frame') $('selection-detail').textContent += ` · низ ${meters(object.z)} м${object.mount === 'ceiling' ? object.z >= PLAYER.height ? ' · проход свободен' : ' · проход перекрыт' : ''} · объектов внутри: ${object.children?.length || 0}`;
+  if (object?.type === 'frame') $('selection-detail').textContent += ` · низ ${meters(object.z)} м${object.mount === 'ceiling' ? object.z >= PLAYER.height ? ' · проход свободен' : ' · проход перекрыт' : ''} · полок: ${shelvesOf(object).length} · блоков: ${object.children?.length || 0}`;
   $('object-count').textContent = String(state.objects.length).padStart(2, '0');
   const occupied = new Set();
   for (const object of state.objects) { const d = dimensions(object); for (let x = object.x; x < object.x + d.width; x++) for (let y = object.y; y < object.y + d.depth; y++) occupied.add(`${x},${y}`); }
@@ -158,7 +159,7 @@ function chooseType(type) {
     try { for (const [key, input] of Object.entries(frameFields)) settings[key] = readVoxels(input); }
     catch (error) { toast(error.message, true); return; }
     settings.mount = $('frame-mount').value;
-    settings.children = []; settings.nextItemId = 1;
+    settings.children = []; settings.nextItemId = 1;settings.shelves=makeShelves(settings.height>=8?[4,settings.height-4]:[settings.height]);
   }
   erase = false; movingId = null; selectedId = null; selectedPipeId = null;
   buildMenuOpen = false;
@@ -373,7 +374,7 @@ function drawObject(object, isGhost = false) {
     const corner = 0.35;
     for (const [x, y] of [[0, 0], [d.width - corner, 0], [0, d.depth - corner], [d.width - corner, d.depth - corner]]) rect(x, y, corner, corner, color);
     rect(0.4, 0.4, d.width - 0.8, d.depth - 0.8, null, `${color}66`, 0.035);
-    if (!object.children?.length) textWorld(object.mount === 'ceiling' ? `ПОТОЛОК ${meters(object.z)} м` : 'КАРКАС', d.width / 2, d.depth / 2, color, Math.max(0.25, Math.min(d.width / 13, 0.5)));
+    if (!object.children?.length) textWorld(object.mount === 'ceiling' ? `ПОТОЛОК ${meters(object.z)} м` : 'СТЕЛЛАЖ', d.width / 2, d.depth / 2, color, Math.max(0.25, Math.min(d.width / 13, 0.5)));
     ctx.setLineDash([]);
     for (const item of object.children || []) {
       const world = worldEquipment(object, item), box = dimensions(world), childColor = EQUIPMENT[item.type].color;
